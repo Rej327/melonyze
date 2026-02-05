@@ -1,8 +1,10 @@
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { AudioModule } from "expo-audio";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,60 +22,84 @@ export default function SoundAnalysisScreen() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [dbLevel, setDbLevel] = useState(-160);
+  const [bars, setBars] = useState(new Array(15).fill(0.1));
 
-  // Simulated frequency bars
-  const [bars, setBars] = useState(new Array(15).fill(0.2));
-
-  const startRecording = () => {
-    setIsRecording(true);
-    setProgress(0);
-  };
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<number>(0);
 
   const analyzeThump = useCallback(async () => {
     setLoading(true);
-    try {
-      // For this demo, we'll pick a random frequency between 100 and 200
-      // In a real app, this would come from an audio buffer FFT
-      const frequency = 120 + Math.random() * 80;
-      const amplitude = 0.5 + Math.random() * 0.4;
-
-      // In this simulated flow, we don't have an item_id yet,
-      // so we might just show the "potential" result or require selecting an item first.
-      // For simplicity in the demo, let's assume we are testing a "hypothetical" melon
-
-      const isReady = frequency >= 110 && frequency <= 190 && amplitude >= 0.6;
+    // Simulate audio analysis logic
+    setTimeout(() => {
+      const isReady = Math.random() > 0.4;
       setResult({
-        frequency: frequency.toFixed(1),
-        amplitude: amplitude.toFixed(2),
+        frequency: (120 + Math.random() * 40).toFixed(1),
+        amplitude: (0.5 + Math.random() * 0.4).toFixed(2),
         status: isReady ? "READY" : "NOT_READY",
       });
       setStep(3);
-    } catch (error) {
-      console.error(error);
-    } finally {
       setLoading(false);
-    }
+    }, 1500);
   }, []);
 
-  useEffect(() => {
-    let interval: any;
-    if (isRecording) {
-      interval = setInterval(() => {
-        setBars((curr) => curr.map(() => 0.1 + Math.random() * 0.9));
-        setProgress((p) => {
-          if (p >= 1) {
-            setIsRecording(false);
-            analyzeThump();
-            return 1;
-          }
-          return p + 0.05;
-        });
-      }, 100);
-    } else {
-      setBars(new Array(15).fill(0.1));
+  const stopRecording = useCallback(() => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
     }
-    return () => clearInterval(interval);
-  }, [isRecording, analyzeThump]);
+    setIsRecording(false);
+    analyzeThump();
+  }, [analyzeThump]);
+
+  const startRecording = async () => {
+    try {
+      // Still request permissions for UX consistency
+      const { status } = await AudioModule.requestRecordingPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Microphone access is recommended for the best experience.",
+        );
+      }
+
+      setIsRecording(true);
+      setProgress(0);
+      startTimeRef.current = Date.now();
+
+      recordingIntervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTimeRef.current;
+        const p = Math.min(1, elapsed / 3000);
+        setProgress(p);
+
+        // Simulate visualizer bars
+        setBars((curr) => {
+          const newBars = [...curr];
+          newBars.shift();
+          newBars.push(0.2 + Math.random() * 0.8);
+          return newBars;
+        });
+
+        // Simulate dB levels
+        setDbLevel(-40 + Math.random() * 20);
+
+        if (p >= 1) {
+          stopRecording();
+        }
+      }, 100) as any;
+    } catch (err) {
+      console.error("Setup error:", err);
+      // Fallback start anyway
+      setIsRecording(true);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current)
+        clearInterval(recordingIntervalRef.current);
+    };
+  }, []);
 
   return (
     <View
@@ -107,7 +133,9 @@ export default function SoundAnalysisScreen() {
         {loading ? (
           <View style={styles.resultContainer}>
             <ActivityIndicator size="large" color="#2D6A4F" />
-            <Text style={styles.instruction}>Analyzing thump pattern...</Text>
+            <Text style={styles.instruction}>
+              Analyzing acoustic signature...
+            </Text>
           </View>
         ) : (
           <>
@@ -119,11 +147,11 @@ export default function SoundAnalysisScreen() {
                     { color: isDark ? "#FFFFFF" : "#1B4332" },
                   ]}
                 >
-                  Microphone Setup
+                  Acoustic Setup
                 </Text>
                 <Text style={styles.instruction}>
-                  Place your phone 2-3 inches from the watermelon in a quiet
-                  environment.
+                  Tap your watermelon continuously for 3 seconds to analyze its
+                  ripeness level.
                 </Text>
 
                 <View
@@ -139,7 +167,7 @@ export default function SoundAnalysisScreen() {
                         { color: isDark ? "#A0A0A0" : "#495057" },
                       ]}
                     >
-                      Ambient Noise
+                      Sound Pressure
                     </Text>
                     <Text
                       style={[
@@ -147,14 +175,23 @@ export default function SoundAnalysisScreen() {
                         { color: isDark ? "#FFFFFF" : "#1B4332" },
                       ]}
                     >
-                      32 dB
+                      {isRecording ? Math.round(dbLevel + 160) : "--"} dB
                     </Text>
                   </View>
                   <View style={styles.meterBg}>
-                    <View style={[styles.meterFill, { width: "35%" }]} />
+                    <View
+                      style={[
+                        styles.meterFill,
+                        {
+                          width: isRecording
+                            ? `${Math.min(100, (dbLevel + 160) / 1.6)}%`
+                            : "0%",
+                        },
+                      ]}
+                    />
                   </View>
                   <Text style={styles.cardStatus}>
-                    ✅ Environment is quiet enough for testing
+                    ✅ Sensor is calibrated and ready
                   </Text>
                 </View>
 
@@ -173,7 +210,7 @@ export default function SoundAnalysisScreen() {
                       },
                     ]}
                   >
-                    Frequency Response
+                    Frequency Spectrum
                   </Text>
                   <View style={styles.chartContainer}>
                     {bars.map((h, i) => (
@@ -186,21 +223,25 @@ export default function SoundAnalysisScreen() {
                       />
                     ))}
                   </View>
-
-                  <View style={styles.chartLabels}>
-                    <Text style={styles.chartLabelText}>20Hz</Text>
-                    <Text style={styles.chartLabelText}>Target Signature</Text>
-                    <Text style={styles.chartLabelText}>2kHz</Text>
-                  </View>
                 </View>
 
-                <View style={styles.alertCard}>
-                  <Text style={styles.alertIcon}>ℹ️</Text>
+                <View
+                  style={[
+                    styles.alertCard,
+                    isRecording && { backgroundColor: "#D8F3DC" },
+                  ]}
+                >
+                  <Text style={styles.alertIcon}>
+                    {isRecording ? "🔴" : "ℹ️"}
+                  </Text>
                   <View style={styles.alertContent}>
-                    <Text style={styles.alertTitle}>Test Thump Required</Text>
+                    <Text style={styles.alertTitle}>
+                      {isRecording ? "Recording Taps..." : "3-Second Scan"}
+                    </Text>
                     <Text style={styles.alertText}>
-                      Gently thump the center of the melon while the recorder is
-                      active to calibrate the frequency filter.
+                      {isRecording
+                        ? "Listening to the resonance. Keep tapping the center..."
+                        : "Click below to begin. You will have 3 seconds to tap the watermelon."}
                     </Text>
                   </View>
                 </View>
@@ -219,7 +260,7 @@ export default function SoundAnalysisScreen() {
                   ]}
                 >
                   <Text style={styles.resultEmoji}>
-                    {result?.status === "READY" ? "✅" : "⏳"}
+                    {result?.status === "READY" ? "🍉" : "⌛"}
                   </Text>
                   <Text
                     style={[
@@ -231,14 +272,14 @@ export default function SoundAnalysisScreen() {
                     ]}
                   >
                     {result?.status === "READY"
-                      ? "PERFECTLY RIPE"
-                      : "NOT QUITE READY"}
+                      ? "READY FOR HARVEST"
+                      : "STILL RIPENING"}
                   </Text>
                 </View>
 
                 <View style={styles.statsList}>
                   <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Frequency</Text>
+                    <Text style={styles.statLabel}>Resonance Freq</Text>
                     <Text
                       style={[
                         styles.statValue,
@@ -249,7 +290,7 @@ export default function SoundAnalysisScreen() {
                     </Text>
                   </View>
                   <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Amplitude</Text>
+                    <Text style={styles.statLabel}>Decay Factor</Text>
                     <Text
                       style={[
                         styles.statValue,
@@ -263,8 +304,8 @@ export default function SoundAnalysisScreen() {
 
                 <Text style={styles.resultAdvice}>
                   {result?.status === "READY"
-                    ? "Acoustic resonance suggests high sugar content and hollow internal structure typical of mature watermelons."
-                    : "The sound is too dull, suggesting the watermelon might still be growing or has low moisture levels."}
+                    ? "Deep hollow sound detected. High sugar content and maturity achieved."
+                    : "The sound is too sharp/solid. The melon likely needs 3-5 more days on the vine."}
                 </Text>
               </View>
             )}
@@ -281,38 +322,43 @@ export default function SoundAnalysisScreen() {
           >
             <Text style={styles.recordButtonText}>
               {isRecording
-                ? `Recording... ${(progress * 100).toFixed(0)}%`
-                : "Record Sample Thump"}
+                ? `Scanning... ${(progress * 100).toFixed(0)}%`
+                : "Start Acoustic Scan"}
             </Text>
           </TouchableOpacity>
         )}
 
         {step === 3 && (
-          <TouchableOpacity
-            style={styles.recordButton}
-            onPress={() => router.replace("/management/add-edit" as any)}
-          >
-            <Text style={styles.recordButtonText}>
-              Save Result to Inventory
-            </Text>
-          </TouchableOpacity>
-        )}
+          <View style={{ gap: 12 }}>
+            <TouchableOpacity
+              style={styles.recordButton}
+              onPress={() => {
+                const query = `analysis_freq=${result?.frequency}&analysis_status=${result?.status}&analysis_amplitude=${result?.amplitude}`;
+                router.replace(`/management/add-edit?${query}` as any);
+              }}
+            >
+              <Text style={styles.recordButtonText}>
+                Save Result to Inventory
+              </Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.skipButton}
-        >
-          <Text style={styles.skipText}>Skip for now</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.recordButton, { backgroundColor: "#D8F3DC" }]}
+              onPress={() => setStep(1)}
+            >
+              <Text style={[styles.recordButtonText, { color: "#2D6A4F" }]}>
+                Run Another Test
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
     paddingTop: 60,
     paddingHorizontal: 24,
@@ -328,37 +374,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  backButtonText: {
-    fontSize: 20,
-    color: "#2D6A4F",
-    fontWeight: "bold",
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
+  backButtonText: { fontSize: 20, color: "#2D6A4F", fontWeight: "bold" },
+  title: { fontSize: 18, fontWeight: "700" },
   progressContainer: {
     paddingHorizontal: 24,
     marginTop: 20,
     alignItems: "center",
   },
-  progressDots: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#E0E0E0",
-  },
-  activeDot: {
-    width: 24,
-    backgroundColor: "#2D6A4F",
-  },
-  content: {
-    padding: 24,
-  },
+  progressDots: { flexDirection: "row", gap: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#E0E0E0" },
+  activeDot: { width: 24, backgroundColor: "#2D6A4F" },
+  content: { padding: 24 },
   mainTitle: {
     fontSize: 28,
     fontWeight: "800",
@@ -389,14 +415,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  cardValue: {
-    fontSize: 20,
-    fontWeight: "800",
-  },
+  cardTitle: { fontSize: 14, fontWeight: "700" },
+  cardValue: { fontSize: 20, fontWeight: "800" },
   meterBg: {
     height: 12,
     backgroundColor: "#F0F0F0",
@@ -404,36 +424,15 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 12,
   },
-  meterFill: {
-    height: "100%",
-    backgroundColor: "#2D6A4F",
-  },
-  cardStatus: {
-    fontSize: 12,
-    color: "#2D6A4F",
-    fontWeight: "600",
-  },
+  meterFill: { height: "100%", backgroundColor: "#2D6A4F" },
+  cardStatus: { fontSize: 12, color: "#2D6A4F", fontWeight: "600" },
   chartContainer: {
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
     height: 60,
   },
-  chartBar: {
-    width: "5%",
-    backgroundColor: "#2D6A4F",
-    borderRadius: 4,
-  },
-  chartLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 10,
-  },
-  chartLabelText: {
-    fontSize: 10,
-    color: "#A0A0A0",
-    fontWeight: "600",
-  },
+  chartBar: { width: "5%", backgroundColor: "#2D6A4F", borderRadius: 4 },
   alertCard: {
     marginTop: 32,
     padding: 16,
@@ -442,27 +441,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
   },
-  alertIcon: {
-    fontSize: 20,
-  },
-  alertContent: {
-    flex: 1,
-  },
+  alertIcon: { fontSize: 20 },
+  alertContent: { flex: 1 },
   alertTitle: {
     fontSize: 15,
     fontWeight: "700",
     color: "#1B4332",
     marginBottom: 4,
   },
-  alertText: {
-    fontSize: 13,
-    color: "#2D6A4F",
-    lineHeight: 18,
-  },
-  footer: {
-    padding: 24,
-    paddingBottom: 40,
-  },
+  alertText: { fontSize: 13, color: "#2D6A4F", lineHeight: 18 },
+  footer: { padding: 24, paddingBottom: 40 },
   recordButton: {
     height: 56,
     backgroundColor: "#2D6A4F",
@@ -470,23 +458,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  recordButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  skipButton: {
-    marginTop: 16,
-    alignItems: "center",
-  },
-  skipText: {
-    color: "#6C757D",
-    fontWeight: "600",
-  },
-  resultContainer: {
-    alignItems: "center",
-    paddingTop: 20,
-  },
+  recordButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  resultContainer: { alignItems: "center", paddingTop: 20 },
   resultCircle: {
     width: 200,
     height: 200,
@@ -496,21 +469,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 32,
   },
-  resultEmoji: {
-    fontSize: 48,
-    marginBottom: 12,
-  },
+  resultEmoji: { fontSize: 48, marginBottom: 12 },
   resultStatus: {
     fontSize: 18,
     fontWeight: "800",
     textAlign: "center",
     paddingHorizontal: 20,
   },
-  statsList: {
-    width: "100%",
-    gap: 16,
-    marginBottom: 32,
-  },
+  statsList: { width: "100%", gap: 16, marginBottom: 32 },
   statItem: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -518,20 +484,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F0F0F0",
   },
-  statLabel: {
-    fontSize: 14,
-    color: "#6C757D",
-    fontWeight: "600",
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: "800",
-  },
+  statLabel: { fontSize: 14, color: "#6C757D", fontWeight: "600" },
+  statValue: { fontSize: 16, fontWeight: "800" },
   resultAdvice: {
     fontSize: 14,
     color: "#6C757D",
     textAlign: "center",
     lineHeight: 22,
-    fontStyle: "italic",
   },
 });

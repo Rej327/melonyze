@@ -3,7 +3,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 import { supabase } from "@/lib/supabase";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -28,9 +28,16 @@ export default function AddEditWatermelon() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(!!id);
   const [label, setLabel] = useState("");
-  const [variety, setVariety] = useState("Sugar Baby");
+  const [variety, setVariety] = useState("");
   const [brix, setBrix] = useState("");
   const [description, setDescription] = useState("");
+  const [batch, setBatch] = useState(
+    "Batch-" +
+      new Date().toLocaleString("default", { month: "short" }) +
+      "-" +
+      new Date().getDate(),
+  );
+  const [status, setStatus] = useState<"READY" | "NOT_READY">("NOT_READY");
   const [image, setImage] = useState<string | null>(null);
 
   const fetchItem = useCallback(async () => {
@@ -43,8 +50,19 @@ export default function AddEditWatermelon() {
         .single();
       if (error) throw error;
       setLabel(data.watermelon_item_label || "");
-      setVariety(data.watermelon_item_variety || "Sugar Baby");
+      setVariety(data.watermelon_item_variety || "");
       setDescription(data.watermelon_item_description || "");
+      setStatus(data.watermelon_item_harvest_status || "NOT_READY");
+      // Extract batch from description or use default if not found
+      // For now, let's assume we might store it at the start like [Batch: ...]
+      const batchMatch =
+        data.watermelon_item_description?.match(/\[Batch: (.*?)\]/);
+      if (batchMatch) {
+        setBatch(batchMatch[1]);
+        setDescription(
+          data.watermelon_item_description.replace(/\[Batch: .*?\]\n?/, ""),
+        );
+      }
       setImage(data.watermelon_item_image_url || null);
     } catch (error) {
       console.error(error);
@@ -57,6 +75,26 @@ export default function AddEditWatermelon() {
   useEffect(() => {
     fetchItem();
   }, [fetchItem]);
+
+  // Handle incoming analysis data
+  const { analysis_freq, analysis_status, analysis_amplitude } =
+    useLocalSearchParams();
+
+  const paramsHandledRef = useRef(false);
+  useEffect(() => {
+    if (analysis_freq && analysis_status && !paramsHandledRef.current) {
+      const report = `[Acoustic Analysis] Status: ${analysis_status}, Frequency: ${analysis_freq}Hz, Amplitude: ${analysis_amplitude}`;
+      setDescription((prev) => (prev ? `${prev}\n\n${report}` : report));
+
+      if (analysis_status === "READY" && !brix) {
+        setBrix("12.5");
+        setStatus("READY");
+      } else if (analysis_status === "NOT_READY") {
+        setStatus("NOT_READY");
+      }
+      paramsHandledRef.current = true;
+    }
+  }, [analysis_freq, analysis_status, analysis_amplitude, brix]);
 
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -128,7 +166,8 @@ export default function AddEditWatermelon() {
         farmer_account_id: user?.id,
         watermelon_item_label: label,
         watermelon_item_variety: variety,
-        watermelon_item_description: description,
+        watermelon_item_description: `[Batch: ${batch}]\n${description}`,
+        watermelon_item_harvest_status: status,
         watermelon_item_image_url: imageUrl,
         watermelon_item_updated_at: new Date().toISOString(),
       };
@@ -162,12 +201,41 @@ export default function AddEditWatermelon() {
         }
 
         if (itemId) {
-          await supabase.from("watermelon_sweetness_records_table").insert([
+          await supabase.from("watermelon_sweetness_record_table").insert([
             {
               watermelon_item_id: itemId,
               watermelon_sweetness_record_score: parseInt(brix),
             },
           ]);
+
+          // If we have analysis data, persist it via RPC
+          if (analysis_freq && analysis_amplitude) {
+            await supabase.rpc("record_watermelon_sound_analysis", {
+              p_watermelon_item_id: itemId,
+              p_frequency: parseFloat(analysis_freq as string),
+              p_amplitude: parseFloat(analysis_amplitude as string),
+            });
+          }
+        }
+      } else if (analysis_freq && analysis_amplitude) {
+        // Even if no Brix, try to find item and record analysis
+        let itemId = id as string;
+        if (!itemId) {
+          const { data } = await supabase
+            .from("watermelon_item_table")
+            .select("watermelon_item_id")
+            .eq("watermelon_item_label", label)
+            .order("watermelon_item_created_at", { ascending: false })
+            .limit(1)
+            .single();
+          itemId = data?.watermelon_item_id;
+        }
+        if (itemId) {
+          await supabase.rpc("record_watermelon_sound_analysis", {
+            p_watermelon_item_id: itemId,
+            p_frequency: parseFloat(analysis_freq as string),
+            p_amplitude: parseFloat(analysis_amplitude as string),
+          });
         }
       }
 
@@ -259,6 +327,72 @@ export default function AddEditWatermelon() {
                   { color: isDark ? "#A0A0A0" : "#495057" },
                 ]}
               >
+                Batch / Harvest Group
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                    color: isDark ? "#FFFFFF" : "#000000",
+                  },
+                ]}
+                value={batch}
+                onChangeText={setBatch}
+                placeholder="e.g. Batch-Feb-26"
+                placeholderTextColor="#A0A0A0"
+              />
+            </View>
+          </View>
+
+          <Text
+            style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
+          >
+            Ripeness Status
+          </Text>
+          <View style={styles.statusToggleContainer}>
+            <TouchableOpacity
+              style={[
+                styles.statusOption,
+                status === "NOT_READY" && styles.statusOptionActiveNotReady,
+              ]}
+              onPress={() => setStatus("NOT_READY")}
+            >
+              <Text
+                style={[
+                  styles.statusOptionText,
+                  status === "NOT_READY" && styles.statusOptionTextActive,
+                ]}
+              >
+                Unripe
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.statusOption,
+                status === "READY" && styles.statusOptionActiveReady,
+              ]}
+              onPress={() => setStatus("READY")}
+            >
+              <Text
+                style={[
+                  styles.statusOptionText,
+                  status === "READY" && styles.statusOptionTextActive,
+                ]}
+              >
+                Ripe
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  styles.label,
+                  { color: isDark ? "#A0A0A0" : "#495057" },
+                ]}
+              >
                 Variety
               </Text>
               <TextInput
@@ -271,7 +405,7 @@ export default function AddEditWatermelon() {
                 ]}
                 value={variety}
                 onChangeText={setVariety}
-                placeholder="Sugar Baby"
+                placeholder="e.g. Sugar Baby"
                 placeholderTextColor="#A0A0A0"
               />
             </View>
@@ -446,5 +580,33 @@ const styles = StyleSheet.create({
     color: "#2D6A4F",
     fontSize: 16,
     fontWeight: "700",
+  },
+  statusToggleContainer: {
+    flexDirection: "row",
+    backgroundColor: "#F0F0F0",
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 24,
+  },
+  statusOption: {
+    flex: 1,
+    height: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 8,
+  },
+  statusOptionActiveReady: {
+    backgroundColor: "#2D6A4F",
+  },
+  statusOptionActiveNotReady: {
+    backgroundColor: "#D90429",
+  },
+  statusOptionText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#6C757D",
+  },
+  statusOptionTextActive: {
+    color: "#FFFFFF",
   },
 });

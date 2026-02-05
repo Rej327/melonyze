@@ -21,6 +21,12 @@ interface WatermelonDetail {
   watermelon_item_harvest_status: "READY" | "NOT_READY";
   watermelon_item_image_url: string;
   watermelon_item_created_at: string;
+  last_analysis?: {
+    frequency: number;
+    amplitude: number;
+    result: string;
+  };
+  last_sweetness?: number;
 }
 
 export default function WatermelonDetails() {
@@ -40,7 +46,36 @@ export default function WatermelonDetails() {
         .single();
 
       if (error) throw error;
-      setWatermelon(data);
+
+      // Fetch latest analysis
+      const { data: analysisData } = await supabase
+        .from("watermelon_sound_analyses_table")
+        .select("*")
+        .eq("watermelon_item_id", id)
+        .order("watermelon_sound_analysis_created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      // Fetch latest sweetness
+      const { data: sweetnessData } = await supabase
+        .from("watermelon_sweetness_record_table")
+        .select("*")
+        .eq("watermelon_item_id", id)
+        .order("watermelon_sweetness_record_created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      setWatermelon({
+        ...data,
+        last_analysis: analysisData
+          ? {
+              frequency: analysisData.watermelon_sound_analysis_frequency,
+              amplitude: analysisData.watermelon_sound_analysis_amplitude,
+              result: analysisData.watermelon_sound_analysis_result,
+            }
+          : undefined,
+        last_sweetness: sweetnessData?.watermelon_sweetness_record_score,
+      });
     } catch (error) {
       console.error("Error fetching details:", error);
       Alert.alert("Error", "Could not load watermelon details");
@@ -158,7 +193,11 @@ export default function WatermelonDetails() {
               ]}
             />
           </View>
-          <Text style={styles.batchInfo}>Batch: Harvest-Feb-26</Text>
+          <Text style={styles.batchInfo}>
+            {watermelon.watermelon_item_description?.match(
+              /\[Batch: (.*?)\]/,
+            )?.[1] || "No Batch Set"}
+          </Text>
 
           <View style={styles.statsGrid}>
             <View
@@ -170,9 +209,15 @@ export default function WatermelonDetails() {
               <Text style={styles.statIcon}>💧</Text>
               <Text style={styles.statTitle}>BRIX LEVEL</Text>
               <Text style={[styles.statValue, { color: "#2D6A4F" }]}>
-                12.5°
+                {watermelon.last_sweetness || "--"}°
               </Text>
-              <Text style={styles.statDesc}>Excellent Sweetness</Text>
+              <Text style={styles.statDesc}>
+                {watermelon.last_sweetness
+                  ? watermelon.last_sweetness > 11
+                    ? "Excellent Sweetness"
+                    : "Standard Sweetness"
+                  : "No Record"}
+              </Text>
             </View>
             <View
               style={[
@@ -225,27 +270,37 @@ export default function WatermelonDetails() {
               </View>
             </View>
 
-            {/* Simulated Chart */}
-            <View style={styles.chartContainer}>
-              {[0.3, 0.4, 0.6, 0.8, 1, 0.9, 0.5, 0.4, 0.2, 0.1].map((h, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.chartBar,
-                    { height: h * 60, opacity: 0.3 + h * 0.7 },
-                  ]}
-                />
-              ))}
-            </View>
-            <View style={styles.chartLabels}>
-              <Text style={styles.chartLabelText}>100 Hz</Text>
-              <Text style={styles.chartLabelText}>Peak: 440 Hz</Text>
-              <Text style={styles.chartLabelText}>1.2k Hz</Text>
-            </View>
+            {watermelon.last_analysis && (
+              <>
+                <View style={styles.chartContainer}>
+                  {/* Visualizer based on real data if possible, or just representative */}
+                  {[0.3, 0.4, 0.6, 0.8, 1, 0.9, 0.5, 0.4, 0.2, 0.1].map(
+                    (h, i) => (
+                      <View
+                        key={i}
+                        style={[
+                          styles.chartBar,
+                          { height: h * 60, opacity: 0.3 + h * 0.7 },
+                        ]}
+                      />
+                    ),
+                  )}
+                </View>
+                <View style={styles.chartLabels}>
+                  <Text style={styles.chartLabelText}>100 Hz</Text>
+                  <Text style={styles.chartLabelText}>
+                    Peak: {watermelon.last_analysis.frequency} Hz
+                  </Text>
+                  <Text style={styles.chartLabelText}>1.2k Hz</Text>
+                </View>
+              </>
+            )}
 
             <Text style={styles.analysisNotes}>
-              Acoustic response indicates a high sugar content and internal
-              moisture consistency. Traditional &quot;thump&quot; test verified.
+              {watermelon.watermelon_item_description?.replace(
+                /\[Batch: .*?\]\n?/,
+                "",
+              ) || "No additional analysis notes provides."}
             </Text>
           </View>
 
