@@ -37,6 +37,7 @@ export default function FarmSettings() {
   const [freqMin, setFreqMin] = useState(100);
   const [freqMax, setFreqMax] = useState(200);
   const [ampMin, setAmpMin] = useState(0.5);
+  const [decayThreshold, setDecayThreshold] = useState(120);
 
   // Farm Address Settings
   const [sitio, setSitio] = useState("");
@@ -68,6 +69,11 @@ export default function FarmSettings() {
         setAmpMin(
           analysisData.watermelon_analysis_settings_ready_amplitude_min,
         );
+        if (analysisData.watermelon_analysis_settings_ready_decay_threshold) {
+          setDecayThreshold(
+            analysisData.watermelon_analysis_settings_ready_decay_threshold,
+          );
+        }
       }
 
       // Fetch Address Settings
@@ -139,6 +145,7 @@ export default function FarmSettings() {
             watermelon_analysis_settings_ready_frequency_min: freqMin,
             watermelon_analysis_settings_ready_frequency_max: freqMax,
             watermelon_analysis_settings_ready_amplitude_min: ampMin,
+            watermelon_analysis_settings_ready_decay_threshold: decayThreshold,
           })
           .eq("farmer_account_id", user.id);
 
@@ -152,6 +159,7 @@ export default function FarmSettings() {
             watermelon_analysis_settings_ready_frequency_min: freqMin,
             watermelon_analysis_settings_ready_frequency_max: freqMax,
             watermelon_analysis_settings_ready_amplitude_min: ampMin,
+            watermelon_analysis_settings_ready_decay_threshold: decayThreshold,
           });
 
         if (analysisError) throw analysisError;
@@ -310,6 +318,24 @@ export default function FarmSettings() {
               <Text style={styles.sliderValue}>{ampMin.toFixed(1)}</Text>
             </View>
 
+            <Text style={styles.filterTitle}>Min Decay Time (ms)</Text>
+            <View style={styles.sliderContainer}>
+              <Slider
+                style={styles.slider}
+                minimumValue={50}
+                maximumValue={500}
+                step={10}
+                value={decayThreshold}
+                onValueChange={setDecayThreshold}
+                minimumTrackTintColor="#2D6A4F"
+                maximumTrackTintColor="#E0E0E0"
+                thumbTintColor="#2D6A4F"
+              />
+              <Text style={styles.sliderValue}>
+                {Math.round(decayThreshold)} ms
+              </Text>
+            </View>
+
             <View style={styles.divider} />
 
             <Text
@@ -422,7 +448,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    paddingTop: 60,
+    paddingTop: 20,
     paddingHorizontal: 24,
     paddingBottom: 20,
     flexDirection: "row",

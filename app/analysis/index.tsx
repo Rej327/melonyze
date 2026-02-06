@@ -1,3 +1,4 @@
+import { analyzeAudioBuffer, analyzeMetering, parseWav } from "@/app/utils/dsp";
 import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
 import { supabase } from "@/lib/supabase";
@@ -7,6 +8,7 @@ import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -33,7 +35,7 @@ export default function SoundAnalysisScreen() {
   // Analysis settings from database
   const [freqMin, setFreqMin] = useState(100);
   const [freqMax, setFreqMax] = useState(200);
-  const [ampMin, setAmpMin] = useState(0.5);
+  const [decayThreshold, setDecayThreshold] = useState(120);
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -62,7 +64,11 @@ export default function SoundAnalysisScreen() {
         if (data && !error) {
           setFreqMin(data.watermelon_analysis_settings_ready_frequency_min);
           setFreqMax(data.watermelon_analysis_settings_ready_frequency_max);
-          setAmpMin(data.watermelon_analysis_settings_ready_amplitude_min);
+          if (data.watermelon_analysis_settings_ready_decay_threshold) {
+            setDecayThreshold(
+              data.watermelon_analysis_settings_ready_decay_threshold,
+            );
+          }
         }
       } catch (error) {
         console.error("Error fetching settings:", error);
@@ -71,97 +77,80 @@ export default function SoundAnalysisScreen() {
     fetchSettings();
   }, [user]);
 
-  const analyzeThump = useCallback(async () => {
-    setLoading(true);
-
-    // Analyze the recorded metering data
-    setTimeout(() => {
-      let frequency = 150;
-      let amplitude = 0.5;
-
-      if (meteringDataRef.current.length > 0) {
-        const meteringData = meteringDataRef.current;
-
-        // Calculate average amplitude from metering data
-        const avgMetering =
-          meteringData.reduce((a, b) => a + b, 0) / meteringData.length;
-
-        // Convert metering (-160 to 0 dB) to amplitude (0 to 2.0)
-        // Typical tap ranges from -60 to -20 dB
-        amplitude = Math.max(0.1, Math.min(2.0, (avgMetering + 80) / 40));
-
-        // Estimate frequency based on audio characteristics
-        // Count peaks in the metering data (zero-crossing rate approximation)
-        let peakCount = 0;
-        for (let i = 1; i < meteringData.length - 1; i++) {
-          if (
-            meteringData[i] > meteringData[i - 1] &&
-            meteringData[i] > meteringData[i + 1]
-          ) {
-            peakCount++;
-          }
-        }
-
-        // Calculate frequency from peak rate
-        // Recording is 3 seconds at 100ms intervals = 30 samples
-        // Frequency = (peaks / duration) * calibration_factor
-        const samplesPerSecond = 10; // 100ms intervals = 10 samples/second
-        const duration = meteringData.length / samplesPerSecond;
-        const peaksPerSecond = peakCount / duration;
-
-        // Watermelon thumps typically have fundamental frequencies between 80-250 Hz
-        // Map peak rate to frequency range with some randomness for realism
-        const baseFreq = 120 + peaksPerSecond * 15;
-        const randomVariation = (Math.random() - 0.5) * 30; // ±15 Hz variation
-        frequency = Math.max(50, Math.min(300, baseFreq + randomVariation));
-
-        // Adjust frequency based on amplitude (louder thumps tend to have lower freq)
-        if (amplitude > 1.2) {
-          frequency *= 0.85; // Lower frequency for loud thumps
-        } else if (amplitude < 0.6) {
-          frequency *= 1.15; // Higher frequency for quiet thumps
-        }
-
-        // Ensure within bounds
-        frequency = Math.max(50, Math.min(300, frequency));
-      }
-
-      // Use user-configured thresholds
-      const isReady =
-        frequency >= freqMin && frequency <= freqMax && amplitude >= ampMin;
-
-      setResult({
-        frequency: frequency.toFixed(1),
-        amplitude: amplitude.toFixed(2),
-        status: isReady ? "READY" : "NOT_READY",
-      });
-      setStep(3);
-      setLoading(false);
-
-      // Clear metering data
-      meteringDataRef.current = [];
-    }, 1500);
-  }, [freqMin, freqMax, ampMin]);
-
   const stopRecording = useCallback(async () => {
     if (recordingIntervalRef.current) {
       clearInterval(recordingIntervalRef.current);
       recordingIntervalRef.current = null;
     }
-
-    // Stop the actual recording
-    if (recordingRef.current) {
-      try {
-        await recordingRef.current.stopAndUnloadAsync();
-        recordingRef.current = null;
-      } catch (error) {
-        console.error("Error stopping recording:", error);
-      }
-    }
-
     setIsRecording(false);
-    analyzeThump();
-  }, [analyzeThump]);
+    setLoading(true);
+
+    try {
+      if (!recordingRef.current) {
+        setLoading(false);
+        return;
+      }
+
+      await recordingRef.current.stopAndUnloadAsync();
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+
+      if (!uri) {
+        throw new Error("No recording URI");
+      }
+
+      // DSP Analysis
+      let dspResult: any;
+
+      if (Platform.OS === "ios") {
+        // Attempt to parse raw WAV
+        const rawSamples = await parseWav(uri);
+        if (rawSamples && rawSamples.length > 0) {
+          dspResult = analyzeAudioBuffer(rawSamples, {
+            freqMin,
+            freqMax,
+            decayThreshold,
+          });
+        } else {
+          // Fallback if parsing failed
+          console.warn("WAV parsing failed, falling back to metering");
+          dspResult = analyzeMetering(meteringDataRef.current, {
+            freqMin,
+            freqMax,
+            decayThreshold,
+          });
+        }
+      } else {
+        // Android/Other fallback
+        dspResult = analyzeMetering(meteringDataRef.current, {
+          freqMin,
+          freqMax,
+          decayThreshold,
+        });
+      }
+
+      setResult({
+        frequency: dspResult.frequency.toFixed(1),
+        amplitude: dspResult.amplitude.toFixed(2),
+        decayTime: dspResult.decayTime.toFixed(0),
+        confidence: dspResult.confidence.toFixed(2),
+        status: dspResult.isRipe ? "READY" : "NOT_READY",
+        debug: dspResult.debug,
+      });
+
+      meteringDataRef.current = [];
+      setStep(3);
+    } catch (error) {
+      console.error("Analysis Error:", error);
+      setAlertConfig({
+        title: "Analysis Failed",
+        message: "Could not process audio. Please try again.",
+      });
+      setAlertVisible(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [freqMin, freqMax, decayThreshold]);
 
   const startRecording = async () => {
     try {
@@ -182,21 +171,12 @@ export default function SoundAnalysisScreen() {
         playsInSilentModeIOS: true,
       });
 
-      // Start recording with metering enabled
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync({
-        isMeteringEnabled: true,
-        android: {
-          extension: ".m4a",
-          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-          audioEncoder: Audio.AndroidAudioEncoder.AAC,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
+      // Prefer WAV on iOS for raw analysis
+      const recordingOptions = {
+        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
         ios: {
-          extension: ".m4a",
-          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+          extension: ".wav",
+          outputFormat: Audio.IOSOutputFormat.LINEARPCM,
           audioQuality: Audio.IOSAudioQuality.HIGH,
           sampleRate: 44100,
           numberOfChannels: 1,
@@ -205,11 +185,11 @@ export default function SoundAnalysisScreen() {
           linearPCMIsBigEndian: false,
           linearPCMIsFloat: false,
         },
-        web: {
-          mimeType: "audio/webm",
-          bitsPerSecond: 128000,
-        },
-      });
+      };
+
+      // Start recording
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(recordingOptions);
 
       await recording.startAsync();
       recordingRef.current = recording;
@@ -224,7 +204,7 @@ export default function SoundAnalysisScreen() {
         const p = Math.min(1, elapsed / 3000);
         setProgress(p);
 
-        // Get real metering data
+        // Get real metering data for UI and Fallback
         if (recordingRef.current) {
           try {
             const status = await recordingRef.current.getStatusAsync();
@@ -233,7 +213,6 @@ export default function SoundAnalysisScreen() {
               meteringDataRef.current.push(metering);
               setDbLevel(metering);
 
-              // Update visualizer bars based on real audio
               const normalizedLevel = Math.max(
                 0,
                 Math.min(1, (metering + 160) / 160),
@@ -245,15 +224,15 @@ export default function SoundAnalysisScreen() {
                 return newBars;
               });
             }
-          } catch (error) {
-            console.error("Error getting metering:", error);
+          } catch {
+            // ignore
           }
         }
 
         if (p >= 1) {
           stopRecording();
         }
-      }, 100) as any;
+      }, 50) as any; // Fast polling for better metering resolution
     } catch (err) {
       console.error("Recording error:", err);
       setAlertConfig({
@@ -465,16 +444,54 @@ export default function SoundAnalysisScreen() {
                       </Text>
                     </View>
                     <View style={styles.statItem}>
-                      <Text style={styles.statLabel}>Decay Factor</Text>
-                      <Text style={styles.statValue}>{result?.amplitude}</Text>
+                      <Text style={styles.statLabel}>Decay Time</Text>
+                      <Text style={styles.statValue}>
+                        {result?.decayTime} ms
+                      </Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statLabel}>Confidence</Text>
+                      <Text style={styles.statValue}>
+                        {Math.round(result?.confidence * 100)}%
+                      </Text>
                     </View>
                   </View>
 
                   <Text style={styles.resultAdvice}>
                     {result?.status === "READY"
-                      ? "Deep hollow sound detected. High sugar content and maturity achieved."
-                      : "The sound is too sharp/solid. The melon likely needs 3-5 more days on the vine."}
+                      ? "Deep resonance detected with slow decay. High ripeness probability."
+                      : "Sound decays too quickly or frequency is off. Likely unripe or hollow."}
                   </Text>
+
+                  <View style={{ gap: 12, width: "100%", marginTop: 32 }}>
+                    <TouchableOpacity
+                      style={styles.recordResultButton}
+                      onPress={() => {
+                        const statusValue =
+                          result?.status === "READY" ? "Ripe" : "Unripe";
+                        const query = `analysis_freq=${result?.frequency}&analysis_status=${statusValue}&analysis_amplitude=${result?.amplitude}&analysis_decay=${result?.decayTime}&analysis_confidence=${result?.confidence}`;
+                        router.replace(`/management/add-edit?${query}` as any);
+                      }}
+                    >
+                      <Text style={styles.recordButtonText}>
+                        Save Result to Inventory
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.recordResultButton,
+                        { backgroundColor: "#D8F3DC" },
+                      ]}
+                      onPress={() => setStep(1)}
+                    >
+                      <Text
+                        style={[styles.recordButtonText, { color: "#2D6A4F" }]}
+                      >
+                        Run Another Test
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
             </>
@@ -482,8 +499,8 @@ export default function SoundAnalysisScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        {step === 1 && (
+      {step === 1 && (
+        <View style={styles.footer}>
           <TouchableOpacity
             style={styles.recordButton}
             onPress={startRecording}
@@ -495,35 +512,8 @@ export default function SoundAnalysisScreen() {
                 : "Start Acoustic Scan"}
             </Text>
           </TouchableOpacity>
-        )}
-
-        {step === 3 && (
-          <View style={{ gap: 12 }}>
-            <TouchableOpacity
-              style={styles.recordButton}
-              onPress={() => {
-                const statusValue =
-                  result?.status === "READY" ? "Ripe" : "Unripe";
-                const query = `analysis_freq=${result?.frequency}&analysis_status=${statusValue}&analysis_amplitude=${result?.amplitude}`;
-                router.replace(`/management/add-edit?${query}` as any);
-              }}
-            >
-              <Text style={styles.recordButtonText}>
-                Save Result to Inventory
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.recordButton, { backgroundColor: "#D8F3DC" }]}
-              onPress={() => setStep(1)}
-            >
-              <Text style={[styles.recordButtonText, { color: "#2D6A4F" }]}>
-                Run Another Test
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -531,7 +521,7 @@ export default function SoundAnalysisScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FBF9" },
   header: {
-    paddingTop: 60,
+    paddingTop: 20,
     paddingHorizontal: 24,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -641,6 +631,12 @@ const styles = StyleSheet.create({
   },
   footer: { padding: 24, paddingBottom: 40 },
   recordButton: {
+    backgroundColor: "#2D6A4F",
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  recordResultButton: {
     height: 56,
     backgroundColor: "#2D6A4F",
     borderRadius: 16,

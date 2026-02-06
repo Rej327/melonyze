@@ -33,7 +33,14 @@ const VARIETIES = [
 ];
 
 export default function AddEditWatermelon() {
-  const { id } = useLocalSearchParams();
+  const {
+    id,
+    analysis_freq,
+    analysis_status,
+    analysis_amplitude,
+    analysis_decay,
+    analysis_confidence,
+  } = useLocalSearchParams();
   const { user } = useAuth();
   const router = useRouter();
   const isDark = useColorScheme() === "dark";
@@ -111,8 +118,7 @@ export default function AddEditWatermelon() {
   }, [fetchItem]);
 
   // Handle incoming analysis data
-  const { analysis_freq, analysis_status, analysis_amplitude } =
-    useLocalSearchParams();
+  // Handle incoming analysis data
 
   const paramsHandledRef = useRef(false);
   useEffect(() => {
@@ -237,6 +243,12 @@ export default function AddEditWatermelon() {
               p_watermelon_item_id: itemId,
               p_frequency: parseFloat(analysis_freq as string),
               p_amplitude: parseFloat(analysis_amplitude as string),
+              p_decay_time: analysis_decay
+                ? parseFloat(analysis_decay as string)
+                : 0,
+              p_confidence: analysis_confidence
+                ? parseFloat(analysis_confidence as string)
+                : 0,
             });
           }
         }
@@ -296,15 +308,14 @@ export default function AddEditWatermelon() {
         />
 
         <ModernModal
-          visible={imgSourceModalVisible}
-          onClose={() => setImgSourceModalVisible(false)}
-          title="Select Photo"
-          message="Choose a source for your watermelon image"
-          confirmText="Take Photo"
-          onConfirm={takePhoto}
+          visible={alertVisible}
+          onClose={() => setAlertVisible(false)}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
         />
 
-        {/* Adding buttons for Gallery in a custom view since ModernModal is basic */}
+        {/* Adding buttons for Gallery in a custom view over a ModernModal */}
         {imgSourceModalVisible && (
           <View style={styles.varietyOverlay}>
             <View style={styles.varietyContent}>
@@ -546,7 +557,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   scrollContent: { paddingBottom: 40 },
   header: {
-    paddingTop: 60,
+    paddingTop: 20,
     paddingHorizontal: 24,
     paddingBottom: 20,
     flexDirection: "row",
