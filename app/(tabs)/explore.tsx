@@ -1,12 +1,13 @@
+import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import { supabase } from "@/lib/supabase";
+import { MaterialIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,11 +24,14 @@ interface FarmerAnalytics {
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<any>(null);
+
   const [analytics, setAnalytics] = useState<FarmerAnalytics | null>(null);
+
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [signOutVisible, setSignOutVisible] = useState(false);
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const isDark = false;
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -63,18 +67,46 @@ export default function ProfileScreen() {
     fetchData();
   }, [fetchData]);
 
-  const handleSignOut = async () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: async () => {
-          await signOut();
-          router.replace("/(auth)/login" as any);
-        },
-      },
-    ]);
+  const handleSignOut = () => {
+    setSignOutVisible(true);
+  };
+
+  const confirmSignOut = async () => {
+    await signOut();
+    router.replace("/(auth)/login" as any);
+  };
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"] as any,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets[0].uri) {
+      setUploading(true);
+      try {
+        const { error } = await supabase
+          .from("farmer_account_table")
+          .update({
+            farmer_account_profile_image_url: result.assets[0].uri,
+            farmer_account_updated_at: new Date().toISOString(),
+          })
+          .eq("farmer_account_id", user?.id);
+
+        if (error) throw error;
+        setProfile((prev: any) => ({
+          ...prev,
+          farmer_account_profile_image_url: result.assets[0].uri,
+        }));
+      } catch (error) {
+        console.error("Error uploading image:", error);
+      } finally {
+        setUploading(false);
+      }
+    }
   };
 
   if (loading) {
@@ -97,20 +129,39 @@ export default function ProfileScreen() {
         { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
       ]}
     >
+      <ModernModal
+        visible={signOutVisible}
+        onClose={() => setSignOutVisible(false)}
+        title="Sign Out"
+        message="Are you sure you want to sign out of your account?"
+        type="warning"
+        confirmText="Sign Out"
+        onConfirm={confirmSignOut}
+      />
+
       <View style={styles.header}>
         <View style={styles.profileHeader}>
-          <Image
-            source={{
-              uri:
-                profile?.farmer_account_profile_image_url ||
-                "https://placehold.co/200x200?text=Profile",
-            }}
-            style={styles.profileImage}
-          />
+          <TouchableOpacity onPress={pickImage} disabled={uploading}>
+            <View style={styles.imageContainer}>
+              <Image
+                source={{
+                  uri:
+                    profile?.farmer_account_profile_image_url ||
+                    "https://placehold.co/200x200?text=Profile",
+                }}
+                style={styles.profileImage}
+              />
+              <View style={styles.editBadge}>
+                {uploading ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <MaterialIcons name="edit" size={14} color="#FFF" />
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
           <View style={styles.profileInfo}>
-            <Text
-              style={[styles.name, { color: isDark ? "#FFFFFF" : "#1B4332" }]}
-            >
+            <Text style={styles.name}>
               {profile?.farmer_account_first_name}{" "}
               {profile?.farmer_account_last_name}
             </Text>
@@ -131,21 +182,21 @@ export default function ProfileScreen() {
 
         <View style={styles.analyticsGrid}>
           <View style={[styles.analyticsCard, { backgroundColor: "#D8F3DC" }]}>
-            <Text style={styles.analyticsIcon}>🍉</Text>
+            <MaterialIcons name="inventory" size={24} color="#1B4332" />
             <Text style={styles.analyticsValue}>
               {analytics?.total_items || 0}
             </Text>
             <Text style={styles.analyticsLabel}>Total Items</Text>
           </View>
           <View style={[styles.analyticsCard, { backgroundColor: "#B7E4C7" }]}>
-            <Text style={styles.analyticsIcon}>✅</Text>
+            <MaterialIcons name="check-circle" size={24} color="#1B4332" />
             <Text style={styles.analyticsValue}>
               {analytics?.ready_items || 0}
             </Text>
             <Text style={styles.analyticsLabel}>Ready to Harvest</Text>
           </View>
           <View style={[styles.analyticsCard, { backgroundColor: "#95D5B2" }]}>
-            <Text style={styles.analyticsIcon}>🍯</Text>
+            <MaterialIcons name="wb-sunny" size={24} color="#1B4332" />
             <Text style={styles.analyticsValue}>
               {analytics?.avg_sweetness?.toFixed(1) || "0.0"}
             </Text>
@@ -155,48 +206,24 @@ export default function ProfileScreen() {
 
         <View style={styles.menuSection}>
           <TouchableOpacity
-            style={[
-              styles.menuItem,
-              { backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF" },
-            ]}
+            style={styles.menuItem}
             onPress={() => router.push("/management/settings" as any)}
           >
-            <Text
-              style={[
-                styles.menuText,
-                { color: isDark ? "#FFFFFF" : "#1B4332" },
-              ]}
-            >
-              Farm Settings
-            </Text>
-            <Text style={styles.menuChevron}>→</Text>
+            <View style={styles.menuMain}>
+              <MaterialIcons name="settings" size={20} color="#2D6A4F" />
+              <Text style={styles.menuText}>Farm Settings</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color="#A0A0A0" />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[
-              styles.menuItem,
-              { backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF" },
-            ]}
-          >
-            <Text
-              style={[
-                styles.menuText,
-                { color: isDark ? "#FFFFFF" : "#1B4332" },
-              ]}
-            >
-              Export Data (CSV)
-            </Text>
-            <Text style={styles.menuChevron}>→</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.menuItem,
-              styles.logoutItem,
-              { backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF" },
-            ]}
+            style={[styles.menuItem, styles.logoutItem]}
             onPress={handleSignOut}
           >
-            <Text style={styles.logoutText}>Sign Out</Text>
+            <View style={styles.menuMain}>
+              <MaterialIcons name="logout" size={20} color="#D90429" />
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -232,6 +259,22 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "#FFFFFF",
   },
+  imageContainer: {
+    position: "relative",
+  },
+  editBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#2D6A4F",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
   profileInfo: {
     marginLeft: 16,
   },
@@ -264,14 +307,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
   },
-  analyticsIcon: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
   analyticsValue: {
     fontSize: 20,
     fontWeight: "800",
     color: "#1B4332",
+    marginTop: 8,
   },
   analyticsLabel: {
     fontSize: 10,
@@ -290,19 +330,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 18,
     borderRadius: 16,
+    backgroundColor: "#FFFFFF",
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
   },
+  menuMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   menuText: {
     fontSize: 16,
     fontWeight: "600",
-  },
-  menuChevron: {
-    fontSize: 18,
-    color: "#A0A0A0",
+    color: "#1B4332",
   },
   logoutItem: {
     marginTop: 20,

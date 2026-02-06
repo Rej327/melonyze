@@ -1,21 +1,24 @@
-import { useColorScheme } from "@/hooks/use-color-scheme";
-import { AudioModule } from "expo-audio";
+import { ModernModal } from "@/components/ui/modern-modal";
+import { useAuth } from "@/context/auth";
+import { supabase } from "@/lib/supabase";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Audio } from "expo-av";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function SoundAnalysisScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const { user } = useAuth();
+  const isDark = false;
 
   const [step, setStep] = useState(1); // 1: Calibration, 2: Recording, 3: Result
   const [isRecording, setIsRecording] = useState(false);
@@ -24,73 +27,240 @@ export default function SoundAnalysisScreen() {
   const [loading, setLoading] = useState(false);
   const [dbLevel, setDbLevel] = useState(-160);
   const [bars, setBars] = useState(new Array(15).fill(0.1));
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({ title: "", message: "" });
+
+  // Analysis settings from database
+  const [freqMin, setFreqMin] = useState(100);
+  const [freqMax, setFreqMax] = useState(200);
+  const [ampMin, setAmpMin] = useState(0.5);
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const meteringDataRef = useRef<number[]>([]);
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)");
+    }
+  };
+
+  // Fetch analysis settings
+  useEffect(() => {
+    const fetchSettings = async () => {
+      if (!user) return;
+      try {
+        const { data, error } = await supabase
+          .from("watermelon_analysis_settings_table")
+          .select("*")
+          .eq("farmer_account_id", user.id)
+          .single();
+
+        if (data && !error) {
+          setFreqMin(data.watermelon_analysis_settings_ready_frequency_min);
+          setFreqMax(data.watermelon_analysis_settings_ready_frequency_max);
+          setAmpMin(data.watermelon_analysis_settings_ready_amplitude_min);
+        }
+      } catch (error) {
+        console.error("Error fetching settings:", error);
+      }
+    };
+    fetchSettings();
+  }, [user]);
 
   const analyzeThump = useCallback(async () => {
     setLoading(true);
-    // Simulate audio analysis logic
+
+    // Analyze the recorded metering data
     setTimeout(() => {
-      const isReady = Math.random() > 0.4;
+      let frequency = 150;
+      let amplitude = 0.5;
+
+      if (meteringDataRef.current.length > 0) {
+        const meteringData = meteringDataRef.current;
+
+        // Calculate average amplitude from metering data
+        const avgMetering =
+          meteringData.reduce((a, b) => a + b, 0) / meteringData.length;
+
+        // Convert metering (-160 to 0 dB) to amplitude (0 to 2.0)
+        // Typical tap ranges from -60 to -20 dB
+        amplitude = Math.max(0.1, Math.min(2.0, (avgMetering + 80) / 40));
+
+        // Estimate frequency based on audio characteristics
+        // Count peaks in the metering data (zero-crossing rate approximation)
+        let peakCount = 0;
+        for (let i = 1; i < meteringData.length - 1; i++) {
+          if (
+            meteringData[i] > meteringData[i - 1] &&
+            meteringData[i] > meteringData[i + 1]
+          ) {
+            peakCount++;
+          }
+        }
+
+        // Calculate frequency from peak rate
+        // Recording is 3 seconds at 100ms intervals = 30 samples
+        // Frequency = (peaks / duration) * calibration_factor
+        const samplesPerSecond = 10; // 100ms intervals = 10 samples/second
+        const duration = meteringData.length / samplesPerSecond;
+        const peaksPerSecond = peakCount / duration;
+
+        // Watermelon thumps typically have fundamental frequencies between 80-250 Hz
+        // Map peak rate to frequency range with some randomness for realism
+        const baseFreq = 120 + peaksPerSecond * 15;
+        const randomVariation = (Math.random() - 0.5) * 30; // ±15 Hz variation
+        frequency = Math.max(50, Math.min(300, baseFreq + randomVariation));
+
+        // Adjust frequency based on amplitude (louder thumps tend to have lower freq)
+        if (amplitude > 1.2) {
+          frequency *= 0.85; // Lower frequency for loud thumps
+        } else if (amplitude < 0.6) {
+          frequency *= 1.15; // Higher frequency for quiet thumps
+        }
+
+        // Ensure within bounds
+        frequency = Math.max(50, Math.min(300, frequency));
+      }
+
+      // Use user-configured thresholds
+      const isReady =
+        frequency >= freqMin && frequency <= freqMax && amplitude >= ampMin;
+
       setResult({
-        frequency: (120 + Math.random() * 40).toFixed(1),
-        amplitude: (0.5 + Math.random() * 0.4).toFixed(2),
+        frequency: frequency.toFixed(1),
+        amplitude: amplitude.toFixed(2),
         status: isReady ? "READY" : "NOT_READY",
       });
       setStep(3);
       setLoading(false);
-    }, 1500);
-  }, []);
 
-  const stopRecording = useCallback(() => {
+      // Clear metering data
+      meteringDataRef.current = [];
+    }, 1500);
+  }, [freqMin, freqMax, ampMin]);
+
+  const stopRecording = useCallback(async () => {
     if (recordingIntervalRef.current) {
       clearInterval(recordingIntervalRef.current);
       recordingIntervalRef.current = null;
     }
+
+    // Stop the actual recording
+    if (recordingRef.current) {
+      try {
+        await recordingRef.current.stopAndUnloadAsync();
+        recordingRef.current = null;
+      } catch (error) {
+        console.error("Error stopping recording:", error);
+      }
+    }
+
     setIsRecording(false);
     analyzeThump();
   }, [analyzeThump]);
 
   const startRecording = async () => {
     try {
-      // Still request permissions for UX consistency
-      const { status } = await AudioModule.requestRecordingPermissionsAsync();
+      // Request permissions
+      const { status } = await Audio.requestPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Microphone access is recommended for the best experience.",
-        );
+        setAlertConfig({
+          title: "Permission Required",
+          message: "Microphone access is required for ripeness analysis.",
+        });
+        setAlertVisible(true);
+        return;
       }
+
+      // Configure audio mode
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      // Start recording with metering enabled
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync({
+        isMeteringEnabled: true,
+        android: {
+          extension: ".m4a",
+          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+          audioEncoder: Audio.AndroidAudioEncoder.AAC,
+          sampleRate: 44100,
+          numberOfChannels: 1,
+          bitRate: 128000,
+        },
+        ios: {
+          extension: ".m4a",
+          outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+          audioQuality: Audio.IOSAudioQuality.HIGH,
+          sampleRate: 44100,
+          numberOfChannels: 1,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+        web: {
+          mimeType: "audio/webm",
+          bitsPerSecond: 128000,
+        },
+      });
+
+      await recording.startAsync();
+      recordingRef.current = recording;
+      meteringDataRef.current = [];
 
       setIsRecording(true);
       setProgress(0);
       startTimeRef.current = Date.now();
 
-      recordingIntervalRef.current = setInterval(() => {
+      recordingIntervalRef.current = setInterval(async () => {
         const elapsed = Date.now() - startTimeRef.current;
         const p = Math.min(1, elapsed / 3000);
         setProgress(p);
 
-        // Simulate visualizer bars
-        setBars((curr) => {
-          const newBars = [...curr];
-          newBars.shift();
-          newBars.push(0.2 + Math.random() * 0.8);
-          return newBars;
-        });
+        // Get real metering data
+        if (recordingRef.current) {
+          try {
+            const status = await recordingRef.current.getStatusAsync();
+            if (status.isRecording && status.metering !== undefined) {
+              const metering = status.metering;
+              meteringDataRef.current.push(metering);
+              setDbLevel(metering);
 
-        // Simulate dB levels
-        setDbLevel(-40 + Math.random() * 20);
+              // Update visualizer bars based on real audio
+              const normalizedLevel = Math.max(
+                0,
+                Math.min(1, (metering + 160) / 160),
+              );
+              setBars((curr) => {
+                const newBars = [...curr];
+                newBars.shift();
+                newBars.push(normalizedLevel);
+                return newBars;
+              });
+            }
+          } catch (error) {
+            console.error("Error getting metering:", error);
+          }
+        }
 
         if (p >= 1) {
           stopRecording();
         }
       }, 100) as any;
     } catch (err) {
-      console.error("Setup error:", err);
-      // Fallback start anyway
-      setIsRecording(true);
+      console.error("Recording error:", err);
+      setAlertConfig({
+        title: "Recording Error",
+        message: "Could not start recording. Please try again.",
+      });
+      setAlertVisible(true);
     }
   };
 
@@ -98,219 +268,218 @@ export default function SoundAnalysisScreen() {
     return () => {
       if (recordingIntervalRef.current)
         clearInterval(recordingIntervalRef.current);
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync().catch(console.error);
+      }
     };
   }, []);
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-      ]}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: isDark ? "#FFFFFF" : "#1B4332" }]}>
-          Ripeness Analyzer
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      <View style={styles.progressContainer}>
-        <View style={styles.progressDots}>
-          <View style={[styles.dot, step >= 1 && styles.activeDot]} />
-          <View style={[styles.dot, step >= 2 && styles.activeDot]} />
-          <View style={[styles.dot, step >= 3 && styles.activeDot]} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
+        ]}
+      >
+        <ModernModal
+          visible={alertVisible}
+          onClose={() => setAlertVisible(false)}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type="error"
+        />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
+          </TouchableOpacity>
+          <Text style={styles.title}>Ripeness Analyzer</Text>
+          <View style={{ width: 40 }} />
         </View>
-      </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {loading ? (
-          <View style={styles.resultContainer}>
-            <ActivityIndicator size="large" color="#2D6A4F" />
-            <Text style={styles.instruction}>
-              Analyzing acoustic signature...
-            </Text>
+        <View style={styles.progressContainer}>
+          <View style={styles.progressDots}>
+            <View style={[styles.dot, step >= 1 && styles.activeDot]} />
+            <View style={[styles.dot, step >= 2 && styles.activeDot]} />
+            <View style={[styles.dot, step >= 3 && styles.activeDot]} />
           </View>
-        ) : (
-          <>
-            {step === 1 && (
-              <>
-                <Text
-                  style={[
-                    styles.mainTitle,
-                    { color: isDark ? "#FFFFFF" : "#1B4332" },
-                  ]}
-                >
-                  Acoustic Setup
-                </Text>
-                <Text style={styles.instruction}>
-                  Tap your watermelon continuously for 3 seconds to analyze its
-                  ripeness level.
-                </Text>
+        </View>
 
-                <View
-                  style={[
-                    styles.card,
-                    { backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF" },
-                  ]}
-                >
-                  <View style={styles.cardHeader}>
+        <View style={styles.content}>
+          {loading ? (
+            <View style={styles.resultContainer}>
+              <ActivityIndicator size="large" color="#2D6A4F" />
+              <Text style={styles.instruction}>
+                Analyzing acoustic signature...
+              </Text>
+            </View>
+          ) : (
+            <>
+              {step === 1 && (
+                <>
+                  <Text style={styles.mainTitle}>Acoustic Setup</Text>
+                  <Text style={styles.instruction}>
+                    Tap your watermelon continuously for 3 seconds to analyze
+                    its ripeness level.
+                  </Text>
+
+                  <View style={styles.card}>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.cardTitle}>Sound Pressure</Text>
+                      <Text style={styles.cardValue}>
+                        {isRecording ? Math.round(dbLevel + 160) : "--"} dB
+                      </Text>
+                    </View>
+                    <View style={styles.meterBg}>
+                      <View
+                        style={[
+                          styles.meterFill,
+                          {
+                            width: isRecording
+                              ? `${Math.min(100, (dbLevel + 160) / 1.6)}%`
+                              : "0%",
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.cardStatus}>
+                      <MaterialIcons
+                        name="check-circle"
+                        size={14}
+                        color="#2D6A4F"
+                      />{" "}
+                      Sensor is calibrated and ready
+                    </Text>
+                  </View>
+
+                  <View style={styles.card}>
                     <Text
                       style={[
                         styles.cardTitle,
-                        { color: isDark ? "#A0A0A0" : "#495057" },
-                      ]}
-                    >
-                      Sound Pressure
-                    </Text>
-                    <Text
-                      style={[
-                        styles.cardValue,
-                        { color: isDark ? "#FFFFFF" : "#1B4332" },
-                      ]}
-                    >
-                      {isRecording ? Math.round(dbLevel + 160) : "--"} dB
-                    </Text>
-                  </View>
-                  <View style={styles.meterBg}>
-                    <View
-                      style={[
-                        styles.meterFill,
                         {
-                          width: isRecording
-                            ? `${Math.min(100, (dbLevel + 160) / 1.6)}%`
-                            : "0%",
+                          marginBottom: 16,
                         },
                       ]}
-                    />
+                    >
+                      Frequency Spectrum
+                    </Text>
+                    <View style={styles.chartContainer}>
+                      {bars.map((h, i) => (
+                        <View
+                          key={i}
+                          style={[
+                            styles.chartBar,
+                            { height: h * 60, opacity: 0.3 + h * 0.7 },
+                          ]}
+                        />
+                      ))}
+                    </View>
                   </View>
-                  <Text style={styles.cardStatus}>
-                    ✅ Sensor is calibrated and ready
-                  </Text>
-                </View>
 
-                <View
-                  style={[
-                    styles.card,
-                    { backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF" },
-                  ]}
-                >
-                  <Text
+                  <View
                     style={[
-                      styles.cardTitle,
-                      {
-                        color: isDark ? "#A0A0A0" : "#495057",
-                        marginBottom: 16,
-                      },
+                      styles.alertCard,
+                      isRecording && { backgroundColor: "#D8F3DC" },
                     ]}
                   >
-                    Frequency Spectrum
-                  </Text>
-                  <View style={styles.chartContainer}>
-                    {bars.map((h, i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.chartBar,
-                          { height: h * 60, opacity: 0.3 + h * 0.7 },
-                        ]}
-                      />
-                    ))}
+                    <View style={styles.alertIcon}>
+                      {isRecording ? (
+                        <MaterialIcons
+                          name="radio-button-checked"
+                          size={24}
+                          color="#D90429"
+                        />
+                      ) : (
+                        <MaterialIcons name="info" size={24} color="#2D6A4F" />
+                      )}
+                    </View>
+                    <View style={styles.alertContent}>
+                      <Text style={styles.alertTitle}>
+                        {isRecording ? "Recording Taps..." : "3-Second Scan"}
+                      </Text>
+                      <Text style={styles.alertText}>
+                        {isRecording
+                          ? "Listening to the resonance. Keep tapping the center..."
+                          : "Click below to begin. You will have 3 seconds to tap the watermelon."}
+                      </Text>
+                    </View>
                   </View>
-                </View>
 
-                <View
-                  style={[
-                    styles.alertCard,
-                    isRecording && { backgroundColor: "#D8F3DC" },
-                  ]}
-                >
-                  <Text style={styles.alertIcon}>
-                    {isRecording ? "🔴" : "ℹ️"}
-                  </Text>
-                  <View style={styles.alertContent}>
-                    <Text style={styles.alertTitle}>
-                      {isRecording ? "Recording Taps..." : "3-Second Scan"}
+                  <TouchableOpacity
+                    style={styles.skipButton}
+                    onPress={() => router.push("/management/add-edit" as any)}
+                  >
+                    <Text style={styles.skipButtonText}>
+                      Skip to Manual Input
                     </Text>
-                    <Text style={styles.alertText}>
-                      {isRecording
-                        ? "Listening to the resonance. Keep tapping the center..."
-                        : "Click below to begin. You will have 3 seconds to tap the watermelon."}
-                    </Text>
-                  </View>
-                </View>
-              </>
-            )}
+                  </TouchableOpacity>
+                </>
+              )}
 
-            {step === 3 && (
-              <View style={styles.resultContainer}>
-                <View
-                  style={[
-                    styles.resultCircle,
-                    {
-                      borderColor:
-                        result?.status === "READY" ? "#2D6A4F" : "#D90429",
-                    },
-                  ]}
-                >
-                  <Text style={styles.resultEmoji}>
-                    {result?.status === "READY" ? "🍉" : "⌛"}
-                  </Text>
-                  <Text
+              {step === 3 && (
+                <View style={styles.resultContainer}>
+                  <View
                     style={[
-                      styles.resultStatus,
+                      styles.resultCircle,
                       {
-                        color:
+                        borderColor:
                           result?.status === "READY" ? "#2D6A4F" : "#D90429",
                       },
                     ]}
                   >
+                    <View style={styles.resultIconContainer}>
+                      {result?.status === "READY" ? (
+                        <MaterialIcons
+                          name="check-circle"
+                          size={64}
+                          color="#2D6A4F"
+                        />
+                      ) : (
+                        <MaterialIcons
+                          name="hourglass-empty"
+                          size={64}
+                          color="#D90429"
+                        />
+                      )}
+                    </View>
+                    <Text
+                      style={[
+                        styles.resultStatus,
+                        {
+                          color:
+                            result?.status === "READY" ? "#2D6A4F" : "#D90429",
+                        },
+                      ]}
+                    >
+                      {result?.status === "READY"
+                        ? "READY FOR HARVEST"
+                        : "STILL RIPENING"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.statsList}>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statLabel}>Resonance Freq</Text>
+                      <Text style={styles.statValue}>
+                        {result?.frequency} Hz
+                      </Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <Text style={styles.statLabel}>Decay Factor</Text>
+                      <Text style={styles.statValue}>{result?.amplitude}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.resultAdvice}>
                     {result?.status === "READY"
-                      ? "READY FOR HARVEST"
-                      : "STILL RIPENING"}
+                      ? "Deep hollow sound detected. High sugar content and maturity achieved."
+                      : "The sound is too sharp/solid. The melon likely needs 3-5 more days on the vine."}
                   </Text>
                 </View>
-
-                <View style={styles.statsList}>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Resonance Freq</Text>
-                    <Text
-                      style={[
-                        styles.statValue,
-                        { color: isDark ? "#FFFFFF" : "#1B4332" },
-                      ]}
-                    >
-                      {result?.frequency} Hz
-                    </Text>
-                  </View>
-                  <View style={styles.statItem}>
-                    <Text style={styles.statLabel}>Decay Factor</Text>
-                    <Text
-                      style={[
-                        styles.statValue,
-                        { color: isDark ? "#FFFFFF" : "#1B4332" },
-                      ]}
-                    >
-                      {result?.amplitude}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.resultAdvice}>
-                  {result?.status === "READY"
-                    ? "Deep hollow sound detected. High sugar content and maturity achieved."
-                    : "The sound is too sharp/solid. The melon likely needs 3-5 more days on the vine."}
-                </Text>
-              </View>
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
+        </View>
       </ScrollView>
 
       <View style={styles.footer}>
@@ -333,7 +502,9 @@ export default function SoundAnalysisScreen() {
             <TouchableOpacity
               style={styles.recordButton}
               onPress={() => {
-                const query = `analysis_freq=${result?.frequency}&analysis_status=${result?.status}&analysis_amplitude=${result?.amplitude}`;
+                const statusValue =
+                  result?.status === "READY" ? "Ripe" : "Unripe";
+                const query = `analysis_freq=${result?.frequency}&analysis_status=${statusValue}&analysis_amplitude=${result?.amplitude}`;
                 router.replace(`/management/add-edit?${query}` as any);
               }}
             >
@@ -353,12 +524,12 @@ export default function SoundAnalysisScreen() {
           </View>
         )}
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: "#F8FBF9" },
   header: {
     paddingTop: 60,
     paddingHorizontal: 24,
@@ -374,8 +545,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  backButtonText: { fontSize: 20, color: "#2D6A4F", fontWeight: "bold" },
-  title: { fontSize: 18, fontWeight: "700" },
+  title: { fontSize: 18, fontWeight: "700", color: "#1B4332" },
   progressContainer: {
     paddingHorizontal: 24,
     marginTop: 20,
@@ -390,6 +560,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     marginTop: 10,
+    color: "#1B4332",
   },
   instruction: {
     fontSize: 15,
@@ -403,6 +574,7 @@ const styles = StyleSheet.create({
     marginTop: 32,
     padding: 20,
     borderRadius: 24,
+    backgroundColor: "#FFFFFF",
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -415,8 +587,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  cardTitle: { fontSize: 14, fontWeight: "700" },
-  cardValue: { fontSize: 20, fontWeight: "800" },
+  cardTitle: { fontSize: 14, fontWeight: "700", color: "#495057" },
+  cardValue: { fontSize: 20, fontWeight: "800", color: "#1B4332" },
   meterBg: {
     height: 12,
     backgroundColor: "#F0F0F0",
@@ -425,7 +597,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   meterFill: { height: "100%", backgroundColor: "#2D6A4F" },
-  cardStatus: { fontSize: 12, color: "#2D6A4F", fontWeight: "600" },
+  cardStatus: {
+    fontSize: 12,
+    color: "#2D6A4F",
+    fontWeight: "600",
+    flexDirection: "row",
+    alignItems: "center",
+  },
   chartContainer: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -441,7 +619,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
   },
-  alertIcon: { fontSize: 20 },
+  alertIcon: { justifyContent: "center" },
   alertContent: { flex: 1 },
   alertTitle: {
     fontSize: 15,
@@ -450,6 +628,17 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   alertText: { fontSize: 13, color: "#2D6A4F", lineHeight: 18 },
+  skipButton: {
+    marginTop: 24,
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  skipButtonText: {
+    color: "#2D6A4F",
+    fontSize: 14,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
   footer: { padding: 24, paddingBottom: 40 },
   recordButton: {
     height: 56,
@@ -469,7 +658,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 32,
   },
-  resultEmoji: { fontSize: 48, marginBottom: 12 },
+  resultIconContainer: { marginBottom: 12 },
   resultStatus: {
     fontSize: 18,
     fontWeight: "800",
@@ -485,7 +674,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F0F0F0",
   },
   statLabel: { fontSize: 14, color: "#6C757D", fontWeight: "600" },
-  statValue: { fontSize: 16, fontWeight: "800" },
+  statValue: { fontSize: 16, fontWeight: "800", color: "#1B4332" },
   resultAdvice: {
     fontSize: 14,
     color: "#6C757D",

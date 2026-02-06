@@ -1,10 +1,10 @@
-import { useColorScheme } from "@/hooks/use-color-scheme";
+import { ModernModal } from "@/components/ui/modern-modal";
 import { supabase } from "@/lib/supabase";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function RegisterScreen() {
   const [firstName, setFirstName] = useState("");
@@ -23,13 +24,25 @@ export default function RegisterScreen() {
   const [contactNumber, setContactNumber] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: "",
+    message: "",
+    type: "info" as any,
+    onConfirm: undefined as any,
+  });
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const isDark = false;
 
   const handleRegister = async () => {
     if (!email || !password || !firstName || !lastName || !contactNumber) {
-      Alert.alert("Error", "Please fill in all fields");
+      setAlertConfig({
+        title: "Error",
+        message: "Please fill in all fields",
+        type: "error",
+        onConfirm: undefined,
+      });
+      setAlertVisible(true);
       return;
     }
 
@@ -65,195 +78,224 @@ export default function RegisterScreen() {
           // But with RLS and triggers, it should be robust.
         }
 
-        Alert.alert(
-          "Success",
-          "Account created! Please check your email for confirmation.",
-          [{ text: "OK", onPress: () => router.replace("/(auth)/login") }],
-        );
+        setAlertConfig({
+          title: "Success",
+          message: "Account created! Please check your email for confirmation.",
+          type: "success",
+          onConfirm: () => router.replace("/(auth)/login"),
+        });
+        setAlertVisible(true);
       }
     } catch (error: any) {
-      Alert.alert("Registration Failed", error.message);
+      setAlertConfig({
+        title: "Registration Failed",
+        message: error.message,
+        type: "error",
+        onConfirm: undefined,
+      });
+      setAlertVisible(true);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={[
-        styles.container,
-        { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-      ]}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
-          <Text
-            style={[styles.title, { color: isDark ? "#FFFFFF" : "#1B4332" }]}
-          >
-            Create Account
-          </Text>
-          <Text style={styles.subtitle}>
-            Join our community of smart harvesters
-          </Text>
-        </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
+        ]}
+      >
+        <ModernModal
+          visible={alertVisible}
+          onClose={() => {
+            setAlertVisible(false);
+            if (alertConfig.onConfirm) alertConfig.onConfirm();
+          }}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+          onConfirm={alertConfig.onConfirm}
+        />
 
-        <View style={styles.form}>
-          <View style={styles.row}>
-            <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
-                First Name
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                    borderColor: isDark ? "#333333" : "#E0E0E0",
-                  },
-                ]}
-                placeholder="Juan"
-                placeholderTextColor="#999"
-                value={firstName}
-                onChangeText={setFirstName}
-              />
-            </View>
-            <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
-                Last Name
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                    borderColor: isDark ? "#333333" : "#E0E0E0",
-                  },
-                ]}
-                placeholder="Dela Cruz"
-                placeholderTextColor="#999"
-                value={lastName}
-                onChangeText={setLastName}
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text
-              style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backButton}
             >
-              Email Address
-            </Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                  color: isDark ? "#FFFFFF" : "#000000",
-                  borderColor: isDark ? "#333333" : "#E0E0E0",
-                },
-              ]}
-              placeholder="juan.delacruz@example.com"
-              placeholderTextColor="#999"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text
-              style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
-            >
-              Contact Number
-            </Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                  color: isDark ? "#FFFFFF" : "#000000",
-                  borderColor: isDark ? "#333333" : "#E0E0E0",
-                },
-              ]}
-              placeholder="0917 123 4567"
-              placeholderTextColor="#999"
-              value={contactNumber}
-              onChangeText={setContactNumber}
-              keyboardType="phone-pad"
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text
-              style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
-            >
-              Password
-            </Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                  color: isDark ? "#FFFFFF" : "#000000",
-                  borderColor: isDark ? "#333333" : "#E0E0E0",
-                },
-              ]}
-              placeholder="Min. 8 characters"
-              placeholderTextColor="#999"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
-
-          <TouchableOpacity
-            style={styles.button}
-            onPress={handleRegister}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.buttonText}>Register Now</Text>
-            )}
-          </TouchableOpacity>
-
-          <View style={styles.footer}>
-            <Text
-              style={[
-                styles.footerText,
-                { color: isDark ? "#A0A0A0" : "#6C757D" },
-              ]}
-            >
-              Already have an account?{" "}
-            </Text>
-            <TouchableOpacity onPress={() => router.push("/(auth)/login")}>
-              <Text style={styles.linkText}>Sign In</Text>
+              <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
             </TouchableOpacity>
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>
+              Join our community of smart harvesters
+            </Text>
           </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+          <View style={styles.form}>
+            <View style={styles.row}>
+              <View
+                style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}
+              >
+                <Text
+                  style={[
+                    styles.label,
+                    { color: isDark ? "#A0A0A0" : "#495057" },
+                  ]}
+                >
+                  First Name
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                      color: isDark ? "#FFFFFF" : "#000000",
+                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                    },
+                  ]}
+                  placeholder="Juan"
+                  placeholderTextColor="#999"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                />
+              </View>
+              <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
+                <Text
+                  style={[
+                    styles.label,
+                    { color: isDark ? "#A0A0A0" : "#495057" },
+                  ]}
+                >
+                  Last Name
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                      color: isDark ? "#FFFFFF" : "#000000",
+                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                    },
+                  ]}
+                  placeholder="Dela Cruz"
+                  placeholderTextColor="#999"
+                  value={lastName}
+                  onChangeText={setLastName}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text
+                style={[
+                  styles.label,
+                  { color: isDark ? "#A0A0A0" : "#495057" },
+                ]}
+              >
+                Email Address
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                    color: isDark ? "#FFFFFF" : "#000000",
+                    borderColor: isDark ? "#333333" : "#E0E0E0",
+                  },
+                ]}
+                placeholder="juan.delacruz@example.com"
+                placeholderTextColor="#999"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text
+                style={[
+                  styles.label,
+                  { color: isDark ? "#A0A0A0" : "#495057" },
+                ]}
+              >
+                Contact Number
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                    color: isDark ? "#FFFFFF" : "#000000",
+                    borderColor: isDark ? "#333333" : "#E0E0E0",
+                  },
+                ]}
+                placeholder="0917 123 4567"
+                placeholderTextColor="#999"
+                value={contactNumber}
+                onChangeText={setContactNumber}
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text
+                style={[
+                  styles.label,
+                  { color: isDark ? "#A0A0A0" : "#495057" },
+                ]}
+              >
+                Password
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                    color: isDark ? "#FFFFFF" : "#000000",
+                    borderColor: isDark ? "#333333" : "#E0E0E0",
+                  },
+                ]}
+                placeholder="Min. 8 characters"
+                placeholderTextColor="#999"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+            </View>
+
+            <TouchableOpacity
+              style={styles.button}
+              onPress={handleRegister}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Register Now</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.footer}>
+              <Text
+                style={[
+                  styles.footerText,
+                  { color: isDark ? "#A0A0A0" : "#6C757D" },
+                ]}
+              >
+                Already have an account?{" "}
+              </Text>
+              <TouchableOpacity onPress={() => router.push("/(auth)/login")}>
+                <Text style={styles.linkText}>Sign In</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

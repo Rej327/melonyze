@@ -1,11 +1,12 @@
+import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import { supabase } from "@/lib/supabase";
+import { MaterialIcons } from "@expo/vector-icons";
+import Slider from "@react-native-community/slider";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -15,26 +16,33 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function FarmSettings() {
   const { user } = useAuth();
-  const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: "",
+    message: "",
+    type: "info" as any,
+    onConfirm: undefined as any,
+  });
+
+  const router = useRouter();
+  const isDark = false;
 
   // Analysis Settings
-  const [freqMin, setFreqMin] = useState("100");
-  const [freqMax, setFreqMax] = useState("200");
-  const [ampMin, setAmpMin] = useState("0.5");
+  const [freqMin, setFreqMin] = useState(100);
+  const [freqMax, setFreqMax] = useState(200);
+  const [ampMin, setAmpMin] = useState(0.5);
 
   // Farm Address Settings
   const [sitio, setSitio] = useState("");
-  const [barangay, setBarangay] = useState("");
-  const [municipality, setMunicipality] = useState("");
-  const [province, setProvince] = useState("");
+  const [barangay, setBarangay] = useState("Brgy. F. Nanadiego");
+  const [municipality, setMunicipality] = useState("Mulanay");
+  const [province, setProvince] = useState("Quezon");
 
   const fetchSettings = useCallback(async () => {
     if (!user) return;
@@ -52,13 +60,13 @@ export default function FarmSettings() {
 
       if (analysisData) {
         setFreqMin(
-          analysisData.watermelon_analysis_settings_ready_frequency_min.toString(),
+          analysisData.watermelon_analysis_settings_ready_frequency_min,
         );
         setFreqMax(
-          analysisData.watermelon_analysis_settings_ready_frequency_max.toString(),
+          analysisData.watermelon_analysis_settings_ready_frequency_max,
         );
         setAmpMin(
-          analysisData.watermelon_analysis_settings_ready_amplitude_min.toString(),
+          analysisData.watermelon_analysis_settings_ready_amplitude_min,
         );
       }
 
@@ -75,13 +83,21 @@ export default function FarmSettings() {
 
       if (addressData) {
         setSitio(addressData.farmer_address_sitio || "");
-        setBarangay(addressData.farmer_address_barangay || "");
-        setMunicipality(addressData.farmer_address_municipality || "");
-        setProvince(addressData.farmer_address_province || "");
+        setBarangay(
+          addressData.farmer_address_barangay || "Brgy. F. Nanadiego",
+        );
+        setMunicipality(addressData.farmer_address_municipality || "Mulanay");
+        setProvince(addressData.farmer_address_province || "Quezon");
       }
     } catch (error) {
       console.error("Error fetching settings:", error);
-      Alert.alert("Error", "Could not load settings");
+      setAlertConfig({
+        title: "Error",
+        message: "Could not load settings",
+        type: "error",
+        onConfirm: undefined,
+      });
+      setAlertVisible(true);
     } finally {
       setLoading(false);
     }
@@ -93,38 +109,105 @@ export default function FarmSettings() {
 
   const handleSave = async () => {
     if (!user) return;
+
+    // Validate frequency range
+    if (freqMin >= freqMax) {
+      setAlertConfig({
+        title: "Invalid Range",
+        message: "Minimum frequency must be less than maximum frequency.",
+        type: "error",
+        onConfirm: undefined,
+      });
+      setAlertVisible(true);
+      return;
+    }
+
     setSaving(true);
     try {
-      // Update Analysis Settings
-      const { error: analysisError } = await supabase
+      // Check if analysis settings exist
+      const { data: existingAnalysis } = await supabase
         .from("watermelon_analysis_settings_table")
-        .upsert({
-          farmer_account_id: user.id,
-          watermelon_analysis_settings_ready_frequency_min: parseFloat(freqMin),
-          watermelon_analysis_settings_ready_frequency_max: parseFloat(freqMax),
-          watermelon_analysis_settings_ready_amplitude_min: parseFloat(ampMin),
-        });
+        .select("*")
+        .eq("farmer_account_id", user.id)
+        .single();
 
-      if (analysisError) throw analysisError;
+      if (existingAnalysis) {
+        // Update existing settings
+        const { error: analysisError } = await supabase
+          .from("watermelon_analysis_settings_table")
+          .update({
+            watermelon_analysis_settings_ready_frequency_min: freqMin,
+            watermelon_analysis_settings_ready_frequency_max: freqMax,
+            watermelon_analysis_settings_ready_amplitude_min: ampMin,
+          })
+          .eq("farmer_account_id", user.id);
 
-      // Update Address Settings
-      const { error: addressError } = await supabase
+        if (analysisError) throw analysisError;
+      } else {
+        // Insert new settings
+        const { error: analysisError } = await supabase
+          .from("watermelon_analysis_settings_table")
+          .insert({
+            farmer_account_id: user.id,
+            watermelon_analysis_settings_ready_frequency_min: freqMin,
+            watermelon_analysis_settings_ready_frequency_max: freqMax,
+            watermelon_analysis_settings_ready_amplitude_min: ampMin,
+          });
+
+        if (analysisError) throw analysisError;
+      }
+
+      // Check if address settings exist
+      const { data: existingAddress } = await supabase
         .from("farmer_address_table")
-        .upsert({
-          farmer_account_id: user.id,
-          farmer_address_sitio: sitio,
-          farmer_address_barangay: barangay,
-          farmer_address_municipality: municipality,
-          farmer_address_province: province,
-        });
+        .select("*")
+        .eq("farmer_account_id", user.id)
+        .single();
 
-      if (addressError) throw addressError;
+      if (existingAddress) {
+        // Update existing address
+        const { error: addressError } = await supabase
+          .from("farmer_address_table")
+          .update({
+            farmer_address_sitio: sitio,
+            farmer_address_barangay: barangay,
+            farmer_address_municipality: municipality,
+            farmer_address_province: province,
+          })
+          .eq("farmer_account_id", user.id);
 
-      Alert.alert("Success", "Settings updated successfully");
-      router.back();
+        if (addressError) throw addressError;
+      } else {
+        // Insert new address
+        const { error: addressError } = await supabase
+          .from("farmer_address_table")
+          .insert({
+            farmer_account_id: user.id,
+            farmer_address_sitio: sitio,
+            farmer_address_barangay: barangay,
+            farmer_address_municipality: municipality,
+            farmer_address_province: province,
+          });
+
+        if (addressError) throw addressError;
+      }
+
+      setAlertConfig({
+        title: "Success",
+        message: "Settings updated successfully",
+        type: "success",
+        onConfirm: () => router.back(),
+      });
+      setAlertVisible(true);
     } catch (error: any) {
       console.error("Error saving settings:", error);
-      Alert.alert("Error", error.message);
+      setAlertConfig({
+        title: "Error",
+        message: error.message,
+        type: "error",
+        onConfirm: undefined,
+      });
+      setAlertVisible(true);
     } finally {
       setSaving(false);
     }
@@ -139,206 +222,190 @@ export default function FarmSettings() {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={[
-        styles.container,
-        { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-      ]}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Text style={styles.backButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <Text
-            style={[styles.title, { color: isDark ? "#FFFFFF" : "#1B4332" }]}
-          >
-            Analysis & Farm Settings
-          </Text>
-          <TouchableOpacity onPress={handleSave} disabled={saving}>
-            {saving ? (
-              <ActivityIndicator size="small" color="#2D6A4F" />
-            ) : (
-              <Text style={styles.saveText}>Save</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
+        ]}
+      >
+        <ModernModal
+          visible={alertVisible}
+          onClose={() => setAlertVisible(false)}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+          onConfirm={alertConfig.onConfirm}
+        />
 
-        <View style={styles.form}>
-          <Text
-            style={[
-              styles.sectionTitle,
-              { color: isDark ? "#2D6A4F" : "#1B4332" },
-            ]}
-          >
-            Ripeness Analysis Thresholds
-          </Text>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backButton}
+            >
+              <MaterialIcons name="close" size={24} color="#6C757D" />
+            </TouchableOpacity>
+            <Text style={styles.title}>Farm Settings</Text>
+            <TouchableOpacity onPress={handleSave} disabled={saving}>
+              {saving ? (
+                <ActivityIndicator size="small" color="#2D6A4F" />
+              ) : (
+                <Text style={styles.saveText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
 
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
-                Min Frequency (Hz)
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                  },
-                ]}
+          <View style={styles.form}>
+            <Text style={styles.sectionTitle}>
+              Ripeness Analysis Thresholds
+            </Text>
+
+            <Text style={styles.filterTitle}>Min Frequency (Hz)</Text>
+            <View style={styles.sliderContainer}>
+              <Slider
+                style={styles.slider}
+                minimumValue={50}
+                maximumValue={300}
+                step={1}
                 value={freqMin}
-                onChangeText={setFreqMin}
-                keyboardType="numeric"
+                onValueChange={setFreqMin}
+                minimumTrackTintColor="#2D6A4F"
+                maximumTrackTintColor="#E0E0E0"
+                thumbTintColor="#2D6A4F"
               />
+              <Text style={styles.sliderValue}>{Math.round(freqMin)} Hz</Text>
             </View>
-            <View style={{ width: 16 }} />
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
-                Max Frequency (Hz)
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                  },
-                ]}
+
+            <Text style={styles.filterTitle}>Max Frequency (Hz)</Text>
+            <View style={styles.sliderContainer}>
+              <Slider
+                style={styles.slider}
+                minimumValue={50}
+                maximumValue={300}
+                step={1}
                 value={freqMax}
-                onChangeText={setFreqMax}
-                keyboardType="numeric"
+                onValueChange={setFreqMax}
+                minimumTrackTintColor="#2D6A4F"
+                maximumTrackTintColor="#E0E0E0"
+                thumbTintColor="#2D6A4F"
               />
+              <Text style={styles.sliderValue}>{Math.round(freqMax)} Hz</Text>
+            </View>
+
+            <Text style={styles.filterTitle}>Min Amplitude</Text>
+            <View style={styles.sliderContainer}>
+              <Slider
+                style={styles.slider}
+                minimumValue={0.1}
+                maximumValue={2.0}
+                step={0.1}
+                value={ampMin}
+                onValueChange={setAmpMin}
+                minimumTrackTintColor="#2D6A4F"
+                maximumTrackTintColor="#E0E0E0"
+                thumbTintColor="#2D6A4F"
+              />
+              <Text style={styles.sliderValue}>{ampMin.toFixed(1)}</Text>
+            </View>
+
+            <View style={styles.divider} />
+
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: isDark ? "#2D6A4F" : "#1B4332" },
+              ]}
+            >
+              Farm Location
+            </Text>
+
+            <Text
+              style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
+            >
+              Sitio / Street
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                  color: isDark ? "#FFFFFF" : "#000000",
+                },
+              ]}
+              value={sitio}
+              onChangeText={setSitio}
+              placeholder="e.g. Purok 1"
+              placeholderTextColor="#A0A0A0"
+            />
+
+            <Text
+              style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
+            >
+              Barangay
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                  color: isDark ? "#FFFFFF" : "#000000",
+                },
+              ]}
+              value={barangay}
+              onChangeText={setBarangay}
+            />
+
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.label,
+                    { color: isDark ? "#A0A0A0" : "#495057" },
+                  ]}
+                >
+                  Municipality
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                      color: isDark ? "#FFFFFF" : "#000000",
+                    },
+                  ]}
+                  value={municipality}
+                  onChangeText={setMunicipality}
+                />
+              </View>
+              <View style={{ width: 16 }} />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.label,
+                    { color: isDark ? "#A0A0A0" : "#495057" },
+                  ]}
+                >
+                  Province
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                      color: isDark ? "#FFFFFF" : "#000000",
+                    },
+                  ]}
+                  value={province}
+                  onChangeText={setProvince}
+                />
+              </View>
             </View>
           </View>
-
-          <Text
-            style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
-          >
-            Min Amplitude
-          </Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                color: isDark ? "#FFFFFF" : "#000000",
-              },
-            ]}
-            value={ampMin}
-            onChangeText={setAmpMin}
-            keyboardType="numeric"
-          />
-
-          <View style={styles.divider} />
-
-          <Text
-            style={[
-              styles.sectionTitle,
-              { color: isDark ? "#2D6A4F" : "#1B4332" },
-            ]}
-          >
-            Farm Location
-          </Text>
-
-          <Text
-            style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
-          >
-            Sitio / Street
-          </Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                color: isDark ? "#FFFFFF" : "#000000",
-              },
-            ]}
-            value={sitio}
-            onChangeText={setSitio}
-            placeholder="e.g. Purok 1"
-            placeholderTextColor="#A0A0A0"
-          />
-
-          <Text
-            style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
-          >
-            Barangay
-          </Text>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                color: isDark ? "#FFFFFF" : "#000000",
-              },
-            ]}
-            value={barangay}
-            onChangeText={setBarangay}
-          />
-
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
-                Municipality
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                  },
-                ]}
-                value={municipality}
-                onChangeText={setMunicipality}
-              />
-            </View>
-            <View style={{ width: 16 }} />
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
-                Province
-              </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                  },
-                ]}
-                value={province}
-                onChangeText={setProvince}
-              />
-            </View>
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -415,5 +482,28 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: "#E9F5EE",
     marginVertical: 24,
+  },
+  filterTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 8,
+    marginLeft: 4,
+    textTransform: "uppercase",
+    color: "#495057",
+    marginTop: 8,
+  },
+  sliderContainer: {
+    marginBottom: 20,
+  },
+  slider: {
+    width: "100%",
+    height: 40,
+  },
+  sliderValue: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#2D6A4F",
+    textAlign: "center",
+    marginTop: 4,
   },
 });

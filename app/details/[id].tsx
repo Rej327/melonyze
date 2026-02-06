@@ -1,17 +1,18 @@
-import { useColorScheme } from "@/hooks/use-color-scheme";
+import { ModernModal } from "@/components/ui/modern-modal";
 import { supabase } from "@/lib/supabase";
+import { MaterialIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface WatermelonDetail {
   watermelon_item_id: string;
@@ -33,9 +34,10 @@ export default function WatermelonDetails() {
   const { id } = useLocalSearchParams();
   const [watermelon, setWatermelon] = useState<WatermelonDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const [errorVisible, setErrorVisible] = useState(false);
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const isDark = false;
 
   const fetchDetails = useCallback(async () => {
     try {
@@ -78,7 +80,7 @@ export default function WatermelonDetails() {
       });
     } catch (error) {
       console.error("Error fetching details:", error);
-      Alert.alert("Error", "Could not load watermelon details");
+      setErrorVisible(true);
     } finally {
       setLoading(false);
     }
@@ -88,30 +90,21 @@ export default function WatermelonDetails() {
     fetchDetails();
   }, [fetchDetails]);
 
-  const handleDelete = async () => {
-    Alert.alert(
-      "Delete Entry",
-      "Are you sure you want to delete this watermelon record?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            const { error } = await supabase
-              .from("watermelon_item_table")
-              .delete()
-              .eq("watermelon_item_id", id);
+  const handleDelete = () => {
+    setDeleteVisible(true);
+  };
 
-            if (error) {
-              Alert.alert("Error", error.message);
-            } else {
-              router.replace("/(tabs)");
-            }
-          },
-        },
-      ],
-    );
+  const confirmDelete = async () => {
+    const { error } = await supabase
+      .from("watermelon_item_table")
+      .delete()
+      .eq("watermelon_item_id", id);
+
+    if (error) {
+      console.error(error);
+    } else {
+      router.replace("/(tabs)");
+    }
   };
 
   if (loading) {
@@ -130,198 +123,190 @@ export default function WatermelonDetails() {
   if (!watermelon) return null;
 
   return (
-    <ScrollView
-      style={[
-        styles.container,
-        { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-      ]}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backButtonText}>Back</Text>
-        </TouchableOpacity>
-        <Text
-          style={[
-            styles.headerTitle,
-            { color: isDark ? "#FFFFFF" : "#1B4332" },
-          ]}
-        >
-          Watermelon Details
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
+        ]}
+      >
+        <ModernModal
+          visible={errorVisible}
+          onClose={() => setErrorVisible(false)}
+          title="Error"
+          message="Could not load watermelon details. Please try again."
+          type="error"
+        />
 
-      <View style={styles.content}>
-        <View style={styles.imageContainer}>
-          <Image
-            source={{
-              uri:
-                watermelon.watermelon_item_image_url ||
-                "https://placehold.co/600x400?text=No+Image",
-            }}
-            style={styles.mainImage}
-          />
-          <View style={styles.idBadge}>
-            <Text style={styles.idText}>
-              ID: {watermelon.watermelon_item_label}
-            </Text>
-          </View>
-        </View>
+        <ModernModal
+          visible={deleteVisible}
+          onClose={() => setDeleteVisible(false)}
+          title="Delete Entry"
+          message="Are you sure you want to delete this watermelon record? This action cannot be undone."
+          type="error"
+          confirmText="Delete"
+          onConfirm={confirmDelete}
+        />
 
-        <View style={styles.infoSection}>
-          <View style={styles.titleRow}>
-            <Text
-              style={[
-                styles.variety,
-                { color: isDark ? "#FFFFFF" : "#1B4332" },
-              ]}
+        <ScrollView>
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backButton}
             >
-              {watermelon.watermelon_item_variety}
-            </Text>
-            <View
-              style={[
-                styles.statusDot,
-                {
-                  backgroundColor:
-                    watermelon.watermelon_item_harvest_status === "READY"
-                      ? "#2D6A4F"
-                      : "#D90429",
-                },
-              ]}
-            />
-          </View>
-          <Text style={styles.batchInfo}>
-            {watermelon.watermelon_item_description?.match(
-              /\[Batch: (.*?)\]/,
-            )?.[1] || "No Batch Set"}
-          </Text>
-
-          <View style={styles.statsGrid}>
-            <View
-              style={[
-                styles.statBox,
-                { backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF" },
-              ]}
-            >
-              <Text style={styles.statIcon}>💧</Text>
-              <Text style={styles.statTitle}>BRIX LEVEL</Text>
-              <Text style={[styles.statValue, { color: "#2D6A4F" }]}>
-                {watermelon.last_sweetness || "--"}°
-              </Text>
-              <Text style={styles.statDesc}>
-                {watermelon.last_sweetness
-                  ? watermelon.last_sweetness > 11
-                    ? "Excellent Sweetness"
-                    : "Standard Sweetness"
-                  : "No Record"}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.statBox,
-                { backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF" },
-              ]}
-            >
-              <Text style={styles.statIcon}>✅</Text>
-              <Text style={styles.statTitle}>RIPENESS</Text>
-              <Text
-                style={[
-                  styles.statValue,
-                  {
-                    color:
-                      watermelon.watermelon_item_harvest_status === "READY"
-                        ? "#2D6A4F"
-                        : "#D90429",
-                  },
-                ]}
-              >
-                {watermelon.watermelon_item_harvest_status === "READY"
-                  ? "Ripe"
-                  : "Unripe"}
-              </Text>
-              <Text style={styles.statDesc}>
-                {watermelon.watermelon_item_harvest_status === "READY"
-                  ? "Ready to Ship"
-                  : "Needs more time"}
-              </Text>
-            </View>
+              <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Details</Text>
+            <View style={{ width: 40 }} />
           </View>
 
-          <View
-            style={[
-              styles.analysisCard,
-              { backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF" },
-            ]}
-          >
-            <View style={styles.analysisHeader}>
-              <Text
-                style={[
-                  styles.analysisTitle,
-                  { color: isDark ? "#FFFFFF" : "#1B4332" },
-                ]}
-              >
-                📊 Sound Analysis
-              </Text>
-              <View style={styles.densityBadge}>
-                <Text style={styles.densityText}>High Density</Text>
+          <View style={styles.content}>
+            <View style={styles.imageContainer}>
+              <Image
+                source={{
+                  uri:
+                    watermelon.watermelon_item_image_url ||
+                    "https://placehold.co/600x400?text=No+Image",
+                }}
+                style={styles.mainImage}
+              />
+              <View style={styles.idBadge}>
+                <Text style={styles.idText}>
+                  ID: {watermelon.watermelon_item_label}
+                </Text>
               </View>
             </View>
 
-            {watermelon.last_analysis && (
-              <>
-                <View style={styles.chartContainer}>
-                  {/* Visualizer based on real data if possible, or just representative */}
-                  {[0.3, 0.4, 0.6, 0.8, 1, 0.9, 0.5, 0.4, 0.2, 0.1].map(
-                    (h, i) => (
-                      <View
-                        key={i}
-                        style={[
-                          styles.chartBar,
-                          { height: h * 60, opacity: 0.3 + h * 0.7 },
-                        ]}
-                      />
-                    ),
-                  )}
-                </View>
-                <View style={styles.chartLabels}>
-                  <Text style={styles.chartLabelText}>100 Hz</Text>
-                  <Text style={styles.chartLabelText}>
-                    Peak: {watermelon.last_analysis.frequency} Hz
+            <View style={styles.infoSection}>
+              <View style={styles.titleRow}>
+                <Text
+                  style={[
+                    styles.variety,
+                    { color: isDark ? "#FFFFFF" : "#1B4332" },
+                  ]}
+                >
+                  {watermelon.watermelon_item_variety}
+                </Text>
+                <View
+                  style={[
+                    styles.statusDot,
+                    {
+                      backgroundColor:
+                        watermelon.watermelon_item_harvest_status === "READY"
+                          ? "#2D6A4F"
+                          : "#D90429",
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.batchInfo}>
+                {watermelon.watermelon_item_description?.match(
+                  /\[Batch: (.*?)\]/,
+                )?.[1] || "No Batch Set"}
+              </Text>
+
+              <View style={styles.statsGrid}>
+                <View style={styles.statBox}>
+                  <MaterialIcons
+                    name="bubble-chart"
+                    size={24}
+                    color="#2D6A4F"
+                    style={{ marginBottom: 8 }}
+                  />
+                  <Text style={styles.statTitle}>BRIX LEVEL</Text>
+                  <Text style={[styles.statValue, { color: "#2D6A4F" }]}>
+                    {watermelon.last_sweetness || "--"}°
                   </Text>
-                  <Text style={styles.chartLabelText}>1.2k Hz</Text>
+                  <Text style={styles.statDesc}>
+                    {watermelon.last_sweetness
+                      ? watermelon.last_sweetness > 11
+                        ? "Excellent Sweetness"
+                        : "Standard Sweetness"
+                      : "No Record"}
+                  </Text>
                 </View>
-              </>
-            )}
+                <View style={styles.statBox}>
+                  <MaterialIcons
+                    name="check-circle"
+                    size={24}
+                    color={
+                      watermelon.watermelon_item_harvest_status === "READY"
+                        ? "#2D6A4F"
+                        : "#D90429"
+                    }
+                    style={{ marginBottom: 8 }}
+                  />
+                  <Text style={styles.statTitle}>RIPENESS</Text>
+                  <Text
+                    style={[
+                      styles.statValue,
+                      {
+                        color:
+                          watermelon.watermelon_item_harvest_status === "READY"
+                            ? "#2D6A4F"
+                            : "#D90429",
+                      },
+                    ]}
+                  >
+                    {watermelon.watermelon_item_harvest_status === "READY"
+                      ? "Ripe"
+                      : "Unripe"}
+                  </Text>
+                  <Text style={styles.statDesc}>
+                    {watermelon.watermelon_item_harvest_status === "READY"
+                      ? "Ready to Ship"
+                      : "Needs more time"}
+                  </Text>
+                </View>
+              </View>
 
-            <Text style={styles.analysisNotes}>
-              {watermelon.watermelon_item_description?.replace(
-                /\[Batch: .*?\]\n?/,
-                "",
-              ) || "No additional analysis notes provides."}
-            </Text>
+              <View style={styles.analysisCard}>
+                <View style={styles.analysisHeader}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <MaterialIcons
+                      name="description"
+                      size={20}
+                      color="#1B4332"
+                      style={{ marginRight: 8 }}
+                    />
+                    <Text style={styles.analysisTitle}>Description</Text>
+                  </View>
+                  <View style={styles.densityBadge}>
+                    <Text style={styles.densityText}>High Density</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.analysisNotes}>
+                  {watermelon.watermelon_item_description?.replace(
+                    /\[Batch: .*?\]\n?/,
+                    "",
+                  ) || "No additional description provided."}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() =>
+                  router.push({
+                    pathname: "/management/add-edit",
+                    params: { id: watermelon.watermelon_item_id },
+                  } as any)
+                }
+              >
+                <Text style={styles.editButtonText}>Edit Details</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={handleDelete}
+              >
+                <Text style={styles.deleteButtonText}>Delete Entry</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-
-          <TouchableOpacity
-            style={styles.editButton}
-            onPress={() =>
-              router.push({
-                pathname: "/management/add-edit",
-                params: { id: watermelon.watermelon_item_id },
-              } as any)
-            }
-          >
-            <Text style={styles.editButtonText}>Edit Details</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-            <Text style={styles.deleteButtonText}>Delete Entry</Text>
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
       </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -359,19 +344,21 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     marginHorizontal: 24,
-    borderRadius: 24,
+    borderRadius: 16,
     overflow: "hidden",
-    height: 300,
+    height: 280,
     position: "relative",
-    elevation: 8,
+    backgroundColor: "#FFFFFF",
+    elevation: 2,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   mainImage: {
     width: "100%",
     height: "100%",
+    backgroundColor: "#F0F0F0",
   },
   idBadge: {
     position: "absolute",
@@ -418,13 +405,14 @@ const styles = StyleSheet.create({
   },
   statBox: {
     flex: 1,
-    padding: 16,
-    borderRadius: 20,
+    padding: 20,
+    borderRadius: 16,
     alignItems: "flex-start",
+    backgroundColor: "#FFFFFF",
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
   },
   statIcon: {
@@ -449,11 +437,12 @@ const styles = StyleSheet.create({
   analysisCard: {
     marginTop: 24,
     padding: 20,
-    borderRadius: 24,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
   },
   analysisHeader: {
@@ -463,8 +452,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   analysisTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
+    color: "#1B4332",
   },
   densityBadge: {
     backgroundColor: "#D8F3DC",
@@ -502,9 +492,9 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   analysisNotes: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: "#6C757D",
+    fontSize: 14,
+    lineHeight: 22,
+    color: "#495057",
     fontWeight: "400",
   },
   editButton: {

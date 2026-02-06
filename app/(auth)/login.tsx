@@ -1,10 +1,10 @@
-import { useColorScheme } from "@/hooks/use-color-scheme";
+import { ModernModal } from "@/components/ui/modern-modal";
 import { supabase } from "@/lib/supabase";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -13,18 +13,29 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: "",
+    message: "",
+    type: "info" as any,
+  });
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const isDark = false;
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please fill in all fields");
+      setAlertConfig({
+        title: "Error",
+        message: "Please fill in all fields",
+        type: "error",
+      });
+      setAlertVisible(true);
       return;
     }
 
@@ -35,7 +46,12 @@ export default function LoginScreen() {
     });
 
     if (error) {
-      Alert.alert("Login Failed", error.message);
+      setAlertConfig({
+        title: "Login Failed",
+        message: error.message,
+        type: "error",
+      });
+      setAlertVisible(true);
       setLoading(false);
     } else {
       router.replace("/(tabs)");
@@ -43,103 +59,114 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={[
-        styles.container,
-        { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-      ]}
-    >
-      <View style={styles.inner}>
-        <View style={styles.logoContainer}>
-          {/* Using a placeholder for now, ideally a nice watermelon icon */}
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>🍉</Text>
-          </View>
-          <Text
-            style={[styles.title, { color: isDark ? "#FFFFFF" : "#1B4332" }]}
-          >
-            Melonyze
-          </Text>
-          <Text style={styles.subtitle}>Smart Watermelon Harvest</Text>
-        </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={[
+          styles.container,
+          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
+        ]}
+      >
+        <ModernModal
+          visible={alertVisible}
+          onClose={() => setAlertVisible(false)}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+        />
 
-        <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text
-              style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
-            >
-              Email Address
-            </Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                  color: isDark ? "#FFFFFF" : "#000000",
-                  borderColor: isDark ? "#333333" : "#E0E0E0",
-                },
-              ]}
-              placeholder="Enter your email"
-              placeholderTextColor="#999"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
+        <View style={styles.inner}>
+          <View style={styles.logoContainer}>
+            <View style={styles.logoCircle}>
+              <MaterialIcons name="local-florist" size={40} color="#2D6A4F" />
+            </View>
+            <Text style={styles.title}>Melonyze</Text>
+            <Text style={styles.subtitle}>Smart Watermelon Harvest</Text>
           </View>
 
-          <View style={styles.inputContainer}>
-            <Text
-              style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
-            >
-              Password
-            </Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                  color: isDark ? "#FFFFFF" : "#000000",
-                  borderColor: isDark ? "#333333" : "#E0E0E0",
-                },
-              ]}
-              placeholder="Enter your password"
-              placeholderTextColor="#999"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
+          <View style={styles.form}>
+            <View style={styles.inputContainer}>
+              <Text
+                style={[
+                  styles.label,
+                  { color: isDark ? "#A0A0A0" : "#495057" },
+                ]}
+              >
+                Email Address
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                    color: isDark ? "#FFFFFF" : "#000000",
+                    borderColor: isDark ? "#333333" : "#E0E0E0",
+                  },
+                ]}
+                placeholder="Enter your email"
+                placeholderTextColor="#999"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </View>
 
-          <TouchableOpacity
-            style={styles.button}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
+            <View style={styles.inputContainer}>
+              <Text
+                style={[
+                  styles.label,
+                  { color: isDark ? "#A0A0A0" : "#495057" },
+                ]}
+              >
+                Password
+              </Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                    color: isDark ? "#FFFFFF" : "#000000",
+                    borderColor: isDark ? "#333333" : "#E0E0E0",
+                  },
+                ]}
+                placeholder="Enter your password"
+                placeholderTextColor="#999"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+            </View>
 
-          <View style={styles.footer}>
-            <Text
-              style={[
-                styles.footerText,
-                { color: isDark ? "#A0A0A0" : "#6C757D" },
-              ]}
+            <TouchableOpacity
+              style={styles.button}
+              onPress={handleLogin}
+              disabled={loading}
             >
-              Don&apos;t have an account?{" "}
-            </Text>
-            <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
-              <Text style={styles.linkText}>Register</Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Sign In</Text>
+              )}
             </TouchableOpacity>
+
+            <View style={styles.footer}>
+              <Text
+                style={[
+                  styles.footerText,
+                  { color: isDark ? "#A0A0A0" : "#6C757D" },
+                ]}
+              >
+                Don&apos;t have an account?{" "}
+              </Text>
+              <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
+                <Text style={styles.linkText}>Register</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

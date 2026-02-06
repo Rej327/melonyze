@@ -1,6 +1,6 @@
 import { useAuth } from "@/context/auth";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import { supabase } from "@/lib/supabase";
+import { MaterialIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
@@ -34,9 +34,16 @@ export default function InventoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [brixFilter, setBrixFilter] = useState<"ALL" | "READ" | "NOT_READY">(
+    "ALL",
+  );
+  const [minBrix, setMinBrix] = useState("");
+  const [maxBrix, setMaxBrix] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const isDark = false;
 
   const fetchInventory = useCallback(async () => {
     if (!user) return;
@@ -62,13 +69,41 @@ export default function InventoryScreen() {
   }, [fetchInventory]);
 
   useEffect(() => {
-    const filtered = items.filter(
+    let filtered = items.filter(
       (item) =>
         item.label?.toLowerCase().includes(search.toLowerCase()) ||
         item.variety?.toLowerCase().includes(search.toLowerCase()),
     );
+
+    if (brixFilter === "READ") {
+      filtered = filtered.filter((item) => item.last_sweetness > 0);
+    } else if (brixFilter === "NOT_READY") {
+      filtered = filtered.filter((item) => !item.last_sweetness);
+    }
+
+    if (minBrix) {
+      filtered = filtered.filter(
+        (item) => item.last_sweetness >= parseFloat(minBrix),
+      );
+    }
+    if (maxBrix) {
+      filtered = filtered.filter(
+        (item) => item.last_sweetness <= parseFloat(maxBrix),
+      );
+    }
+
+    if (fromDate) {
+      const from = new Date(fromDate);
+      filtered = filtered.filter((item) => new Date(item.created_at) >= from);
+    }
+    if (toDate) {
+      const to = new Date(toDate);
+      to.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((item) => new Date(item.created_at) <= to);
+    }
+
     setFilteredItems(filtered);
-  }, [search, items]);
+  }, [search, items, brixFilter, minBrix, maxBrix, fromDate, toDate]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -77,10 +112,7 @@ export default function InventoryScreen() {
 
   const renderItem = ({ item }: { item: WatermelonItem }) => (
     <TouchableOpacity
-      style={[
-        styles.itemCard,
-        { backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF" },
-      ]}
+      style={styles.itemCard}
       onPress={() => router.push(`/details/${item.item_id}` as any)}
     >
       <Image
@@ -91,14 +123,7 @@ export default function InventoryScreen() {
       />
       <View style={styles.itemInfo}>
         <View style={styles.itemHeader}>
-          <Text
-            style={[
-              styles.itemLabel,
-              { color: isDark ? "#FFFFFF" : "#1B4332" },
-            ]}
-          >
-            {item.label}
-          </Text>
+          <Text style={styles.itemLabel}>{item.label}</Text>
           <View
             style={[
               styles.statusBadge,
@@ -114,17 +139,30 @@ export default function InventoryScreen() {
                 { color: item.status === "READY" ? "#2D6A4F" : "#D90429" },
               ]}
             >
-              {item.status.replace("_", " ")}
+              {item.status === "READY" ? "RIPE" : "UNRIPE"}
             </Text>
           </View>
         </View>
         <Text style={styles.itemVariety}>{item.variety}</Text>
         <View style={styles.itemStats}>
+          <MaterialIcons name="bubble-chart" size={14} color="#2D6A4F" />
           <Text style={styles.statLabel}>
+            {" "}
             Sweetness:{" "}
             <Text style={styles.statValue}>
               {item.last_sweetness || "--"} °Bx
             </Text>
+          </Text>
+        </View>
+        <View style={styles.itemStats}>
+          <MaterialIcons name="calendar-today" size={12} color="#6C757D" />
+          <Text style={styles.dateLabel}>
+            {" "}
+            {new Date(item.created_at).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
           </Text>
         </View>
       </View>
@@ -152,33 +190,94 @@ export default function InventoryScreen() {
       ]}
     >
       <View style={styles.header}>
-        <Text style={[styles.title, { color: isDark ? "#FFFFFF" : "#1B4332" }]}>
-          Watermelon Inventory
-        </Text>
+        <Text style={styles.title}>Inventory</Text>
         <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push("/management/add-edit" as any)}
+          style={styles.filterToggle}
+          onPress={() => setShowFilters(!showFilters)}
         >
-          <Text style={styles.addButtonText}>+</Text>
+          <MaterialIcons name="filter-list" size={24} color="#2D6A4F" />
         </TouchableOpacity>
       </View>
 
       <View style={styles.searchContainer}>
-        <TextInput
-          style={[
-            styles.searchInput,
-            {
-              backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-              color: isDark ? "#FFFFFF" : "#000000",
-              borderColor: isDark ? "#333333" : "#E0E0E0",
-            },
-          ]}
-          placeholder="Search watermelons..."
-          placeholderTextColor="#999"
-          value={search}
-          onChangeText={setSearch}
-        />
+        <View style={styles.searchBar}>
+          <MaterialIcons name="search" size={20} color="#999" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search label, variety..."
+            placeholderTextColor="#999"
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
       </View>
+
+      {showFilters && (
+        <View style={styles.filterCard}>
+          <Text style={styles.filterTitle}>Brix Analysis</Text>
+          <View style={styles.filterRow}>
+            {(["ALL", "READ", "NOT_READY"] as const).map((f) => (
+              <TouchableOpacity
+                key={f}
+                style={[
+                  styles.filterChip,
+                  brixFilter === f && styles.filterChipActive,
+                ]}
+                onPress={() => setBrixFilter(f)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    brixFilter === f && styles.filterChipTextActive,
+                  ]}
+                >
+                  {f === "READ"
+                    ? "Analyzed"
+                    : f === "NOT_READY"
+                      ? "Pending"
+                      : "All"}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.filterTitle}>Brix Range</Text>
+          <View style={styles.rangeRow}>
+            <TextInput
+              style={styles.rangeInput}
+              placeholder="Min"
+              keyboardType="numeric"
+              value={minBrix}
+              onChangeText={setMinBrix}
+            />
+            <Text style={styles.rangeSep}>to</Text>
+            <TextInput
+              style={styles.rangeInput}
+              placeholder="Max"
+              keyboardType="numeric"
+              value={maxBrix}
+              onChangeText={setMaxBrix}
+            />
+          </View>
+
+          <Text style={styles.filterTitle}>Scan Date Range</Text>
+          <View style={styles.rangeRow}>
+            <TextInput
+              style={styles.rangeInput}
+              placeholder="From (YYYY-MM-DD)"
+              value={fromDate}
+              onChangeText={setFromDate}
+            />
+            <Text style={styles.rangeSep}>to</Text>
+            <TextInput
+              style={styles.rangeInput}
+              placeholder="To (YYYY-MM-DD)"
+              value={toDate}
+              onChangeText={setToDate}
+            />
+          </View>
+        </View>
+      )}
 
       <FlatList
         data={filteredItems}
@@ -228,59 +327,125 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: "800",
+    color: "#1B4332",
   },
-  addButton: {
+  filterToggle: {
     width: 44,
     height: 44,
-    backgroundColor: "#2D6A4F",
-    borderRadius: 22,
+    backgroundColor: "#F0F0F0",
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
-    elevation: 4,
-    shadowColor: "#2D6A4F",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  addButtonText: {
-    color: "#FFFFFF",
-    fontSize: 24,
-    fontWeight: "bold",
   },
   searchContainer: {
     paddingHorizontal: 24,
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    height: 52,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
   },
   searchInput: {
-    height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 16,
+    flex: 1,
+    marginLeft: 8,
     fontSize: 16,
+    color: "#000",
+  },
+  filterCard: {
+    marginHorizontal: 24,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  filterTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#6C757D",
+    textTransform: "uppercase",
+    marginBottom: 12,
+  },
+  filterRow: {
+    flexDirection: "row",
+    marginBottom: 16,
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#F0F0F0",
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  filterChipActive: {
+    backgroundColor: "#D8F3DC",
+    borderColor: "#2D6A4F",
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6C757D",
+  },
+  filterChipTextActive: {
+    color: "#2D6A4F",
+  },
+  rangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  rangeInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: "#F8FBF9",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  rangeSep: {
+    fontSize: 12,
+    color: "#6C757D",
+    fontWeight: "600",
   },
   listContent: {
     paddingHorizontal: 24,
     paddingBottom: 24,
   },
+
   itemCard: {
     flexDirection: "row",
     borderRadius: 16,
     marginBottom: 16,
     overflow: "hidden",
+    backgroundColor: "#FFFFFF",
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
+    minHeight: 120,
   },
+
   itemImage: {
-    width: 100,
-    height: 100,
+    width: 120,
+    height: "100%",
+    backgroundColor: "#F0F0F0",
   },
   itemInfo: {
     flex: 1,
-    padding: 12,
-    justifyContent: "center",
+    padding: 16,
+    justifyContent: "space-between",
   },
   itemHeader: {
     flexDirection: "row",
@@ -320,6 +485,11 @@ const styles = StyleSheet.create({
   statValue: {
     fontWeight: "700",
     color: "#2D6A4F",
+  },
+  dateLabel: {
+    fontSize: 11,
+    color: "#999",
+    fontWeight: "500",
   },
   emptyContainer: {
     marginTop: 100,
