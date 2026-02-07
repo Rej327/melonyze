@@ -21,6 +21,9 @@ export default function RegisterScreen() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [contactNumber, setContactNumber] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -35,10 +38,28 @@ export default function RegisterScreen() {
   const isDark = false;
 
   const handleRegister = async () => {
-    if (!email || !password || !firstName || !lastName || !contactNumber) {
+    if (
+      !email ||
+      !password ||
+      !confirmPassword ||
+      !firstName ||
+      !lastName ||
+      !contactNumber
+    ) {
       setAlertConfig({
         title: "Error",
         message: "Please fill in all fields",
+        type: "error",
+        onConfirm: undefined,
+      });
+      setAlertVisible(true);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setAlertConfig({
+        title: "Error",
+        message: "Passwords do not match",
         type: "error",
         onConfirm: undefined,
       });
@@ -250,21 +271,73 @@ export default function RegisterScreen() {
               >
                 Password
               </Text>
-              <TextInput
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                      color: isDark ? "#FFFFFF" : "#000000",
+                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                      flex: 1,
+                    },
+                  ]}
+                  placeholder="Min. 8 characters"
+                  placeholderTextColor="#999"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <MaterialIcons
+                    name={showPassword ? "visibility" : "visibility-off"}
+                    size={24}
+                    color="#6C757D"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text
                 style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                    borderColor: isDark ? "#333333" : "#E0E0E0",
-                  },
+                  styles.label,
+                  { color: isDark ? "#A0A0A0" : "#495057" },
                 ]}
-                placeholder="Min. 8 characters"
-                placeholderTextColor="#999"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
+              >
+                Confirm Password
+              </Text>
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                      color: isDark ? "#FFFFFF" : "#000000",
+                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                      flex: 1,
+                    },
+                  ]}
+                  placeholder="Confirm your password"
+                  placeholderTextColor="#999"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showConfirmPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  <MaterialIcons
+                    name={showConfirmPassword ? "visibility" : "visibility-off"}
+                    size={24}
+                    color="#6C757D"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <TouchableOpacity
@@ -356,7 +429,18 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     paddingHorizontal: 16,
+    paddingRight: 50, // Add space for the eye icon
     fontSize: 16,
+  },
+  passwordInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  eyeIcon: {
+    position: "absolute",
+    right: 16,
+    height: "100%",
+    justifyContent: "center",
   },
   button: {
     height: 56,

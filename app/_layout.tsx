@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import "react-native-reanimated";
 
+import { LoadingScreen } from "@/components/loading-screen";
 import { AuthProvider, useAuth } from "@/context/auth";
 
 export const unstable_settings = {
@@ -21,17 +22,28 @@ function RootLayoutNav() {
     const inAuthGroup = (segments[0] as string) === "(auth)";
 
     if (!session && !inAuthGroup) {
-      // Redirect to login if not authenticated
-      router.replace("/(auth)/login" as any);
+      // Redirect to welcome if not authenticated
+      router.replace("/(auth)/welcome" as any);
     } else if (session && inAuthGroup) {
       // Redirect to home if authenticated and trying to access auth screens
       router.replace("/(tabs)");
     }
   }, [session, loading, segments, router]);
 
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)/welcome" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)/register" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="(auth)/forgot-password"
+        options={{ headerShown: false }}
+      />
       <Stack.Screen
         name="modal"
         options={{ presentation: "modal", title: "Modal", headerShown: true }}

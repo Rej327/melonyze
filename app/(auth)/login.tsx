@@ -1,6 +1,7 @@
 import { ModernModal } from "@/components/ui/modern-modal";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -18,6 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({
@@ -78,7 +80,11 @@ export default function LoginScreen() {
         <View style={styles.inner}>
           <View style={styles.logoContainer}>
             <View style={styles.logoCircle}>
-              <MaterialIcons name="local-florist" size={40} color="#2D6A4F" />
+              <Image
+                source={require("@/assets/images/icon.png")}
+                style={styles.logo}
+                contentFit="contain"
+              />
             </View>
             <Text style={styles.title}>Melonyze</Text>
             <Text style={styles.subtitle}>Smart Watermelon Harvest</Text>
@@ -121,22 +127,42 @@ export default function LoginScreen() {
               >
                 Password
               </Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                    borderColor: isDark ? "#333333" : "#E0E0E0",
-                  },
-                ]}
-                placeholder="Enter your password"
-                placeholderTextColor="#999"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                      color: isDark ? "#FFFFFF" : "#000000",
+                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                      flex: 1,
+                    },
+                  ]}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#999"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <MaterialIcons
+                    name={showPassword ? "visibility" : "visibility-off"}
+                    size={24}
+                    color="#6C757D"
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
+
+            <TouchableOpacity
+              style={styles.forgotPassword}
+              onPress={() => router.push("/(auth)/forgot-password")}
+            >
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.button}
@@ -197,6 +223,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  logo: {
+    width: 60,
+    height: 60,
+  },
   logoText: {
     fontSize: 40,
   },
@@ -228,7 +258,18 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     paddingHorizontal: 16,
+    paddingRight: 50, // Add space for the eye icon
     fontSize: 16,
+  },
+  passwordInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  eyeIcon: {
+    position: "absolute",
+    right: 16,
+    height: "100%",
+    justifyContent: "center",
   },
   button: {
     height: 56,
@@ -260,5 +301,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#2D6A4F",
     fontWeight: "700",
+  },
+  forgotPassword: {
+    alignSelf: "flex-end",
+    marginBottom: 24,
+    marginTop: -8,
+    marginRight: 4,
+  },
+  forgotPasswordText: {
+    color: "#2D6A4F",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
