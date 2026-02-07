@@ -181,7 +181,6 @@ export default function SoundAnalysisScreen() {
         playsInSilentModeIOS: true,
       });
 
-      // Prefer WAV on iOS for raw analysis
       const recordingOptions = {
         ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
         ios: {
@@ -197,11 +196,15 @@ export default function SoundAnalysisScreen() {
         },
       };
 
-      // Start recording
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(recordingOptions);
+      // Start recording with modern API
+      const { recording } = await Audio.Recording.createAsync(
+        recordingOptions,
+        (status) => {
+          // Progress update handled in interval for consistency with UI 3s timer
+        },
+        50, // Progress update interval
+      );
 
-      await recording.startAsync();
       recordingRef.current = recording;
       meteringDataRef.current = [];
 

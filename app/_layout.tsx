@@ -6,10 +6,13 @@ import { useEffect, useState } from "react";
 import { Appearance, StyleSheet, Text, View } from "react-native";
 import "react-native-reanimated";
 
-import { LoadingScreen } from "@/components/loading-screen";
 import { AuthProvider, useAuth } from "@/context/auth";
 import { FarmProvider } from "@/context/farm";
 import { supabase } from "@/lib/supabase";
+import * as SplashScreen from "expo-splash-screen";
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -106,8 +109,16 @@ function RootLayoutNav() {
     }
   }, [session, loading, segments, router, isFetchingConfig]);
 
+  useEffect(() => {
+    if (!loading && !isFetchingConfig) {
+      SplashScreen.hideAsync().catch(() => {
+        /* Ignore errors */
+      });
+    }
+  }, [loading, isFetchingConfig]);
+
   if (loading || isFetchingConfig) {
-    return <LoadingScreen />;
+    return null;
   }
 
   // Time Bomb Logic for Testing

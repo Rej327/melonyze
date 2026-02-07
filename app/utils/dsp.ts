@@ -1,4 +1,3 @@
-import { Buffer } from "buffer";
 import * as FileSystem from "expo-file-system";
 
 // DSP Constants
@@ -184,25 +183,40 @@ export async function parseWav(uri: string): Promise<Float32Array | null> {
     const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: "base64",
     });
-    const binaryString = Buffer.from(base64, "base64");
 
-    // Skip header (44 bytes standard, but scanning for 'data' chunk is safer)
-    // Simple fixed skip for standard WAV
+    // Convert base64 to ArrayBuffer using native methods
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const arrayBuffer = bytes.buffer;
+    const dataView = new DataView(arrayBuffer);
+
+    // Skip header (44 bytes standard for WAV)
     const headerSize = 44;
-    const rawData = binaryString.slice(headerSize);
+    const sampleBytes = len - headerSize;
+    if (sampleBytes <= 0) return null;
 
-    // Convert to Float32 (-1.0 to 1.0)
-    // Assuming 16-bit PCM
-    const samples = new Float32Array(rawData.length / 2);
-    for (let i = 0; i < samples.length; i++) {
-      // Read Int16 Little Endian
-      const int16 = rawData.readInt16LE(i * 2);
-      samples[i] = int16 / 32768.0;
+    const sampleCount = Math.floor(sampleBytes / 2);
+    const samples = new Float32Array(sampleCount);
+
+    for (let i = 0; i < sampleCount; i++) {
+      // Read Int16 Little Endian (DataView.getInt16(byteOffset, littleEndian))
+      // Standard WAV is Little Endian
+      try {
+        const int16 = dataView.getInt16(headerSize + i * 2, true);
+        samples[i] = int16 / 32768.0;
+      } catch {
+        // Fallback for unexpected end of buffer
+        break;
+      }
     }
 
     return samples;
-  } catch (e) {
-    console.error("WAV Parse Error", e);
+  } catch (err) {
+    console.error("WAV Parse Error", err);
     return null;
   }
 }
