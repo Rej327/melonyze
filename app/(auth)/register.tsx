@@ -128,7 +128,7 @@ export default function RegisterScreen() {
             message:
               "An account with this email already exists. Please sign in or use a different email address.",
             type: "warning",
-            onConfirm: () => router.push("/(auth)/login"),
+            onConfirm: () => setAlertVisible(false),
           });
           setAlertVisible(true);
           setLoading(false);
@@ -198,14 +198,18 @@ export default function RegisterScreen() {
       >
         <ModernModal
           visible={alertVisible}
-          onClose={() => {
-            setAlertVisible(false);
-            if (alertConfig.onConfirm) alertConfig.onConfirm();
-          }}
+          onClose={() => setAlertVisible(false)}
           title={alertConfig.title}
           message={alertConfig.message}
           type={alertConfig.type}
-          onConfirm={alertConfig.onConfirm}
+          onConfirm={
+            alertConfig.onConfirm
+              ? () => {
+                  setAlertVisible(false);
+                  alertConfig.onConfirm?.();
+                }
+              : undefined
+          }
         />
 
         <ScrollView contentContainerStyle={styles.scrollContent}>

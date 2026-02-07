@@ -469,7 +469,15 @@ export default function FarmGroupScreen() {
                 style={styles.discoverButton}
                 onPress={() => router.push("/management/discover-farms")}
               >
+                <MaterialIcons name="search" size={20} color="#FFF" />
                 <Text style={styles.discoverButtonText}>Discover Farms</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.createShortcutButton}
+                onPress={() => setIsCreating(true)}
+              >
+                <MaterialIcons name="add" size={20} color="#2D6A4F" />
+                <Text style={styles.createShortcutText}>Create New Farm</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -663,13 +671,33 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   discoverButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
     backgroundColor: "#2D6A4F",
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 16,
     marginTop: 24,
+    width: "100%",
   },
   discoverButtonText: { color: "#FFF", fontWeight: "700", fontSize: 16 },
+  createShortcutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginTop: 12,
+    width: "100%",
+    borderWidth: 2,
+    borderColor: "#2D6A4F",
+  },
+  createShortcutText: { color: "#2D6A4F", fontWeight: "700", fontSize: 16 },
   footer: {
     position: "absolute",
     bottom: 0,

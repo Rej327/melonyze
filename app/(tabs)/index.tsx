@@ -9,7 +9,6 @@ import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -19,7 +18,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface WatermelonItem {
   item_id: string;
@@ -43,7 +41,6 @@ export default function InventoryScreen() {
     loading: farmLoading,
     refreshFarms,
   } = useFarm();
-  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<WatermelonItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,6 +61,30 @@ export default function InventoryScreen() {
 
   const [showFilters, setShowFilters] = useState(false);
   const [selectedFarmId, setSelectedFarmId] = useState<string | null>(null);
+
+  // Generic Alert Modal State
+  const [alertModalVisible, setAlertModalVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<{
+    title: string;
+    message: string;
+    type: "success" | "warning" | "error" | "info";
+    onConfirm?: () => void;
+  }>({
+    title: "",
+    message: "",
+    type: "info",
+  });
+
+  const showAlert = (
+    title: string,
+    message: string,
+    type: "success" | "warning" | "error" | "info" = "info",
+    onConfirm?: () => void,
+  ) => {
+    setAlertConfig({ title, message, type, onConfirm });
+    setAlertModalVisible(true);
+  };
+
   const router = useRouter();
 
   // Check if any filters are active
@@ -88,8 +109,31 @@ export default function InventoryScreen() {
     }
   }, [activeFarm, selectedFarmId]);
 
+  const handleFarmSelect = useCallback(
+    async (farmId: string) => {
+      setSelectedFarmId(farmId);
+      try {
+        const { error } = await supabase.rpc("set_default_farm", {
+          p_farmer_id: user?.id,
+          p_group_id: farmId,
+        });
+
+        if (error) {
+          console.error("Error setting default farm:", error.message);
+          return;
+        }
+
+        // Refresh the global context so other screens see the change
+        await refreshFarms();
+      } catch (err) {
+        console.error("Unexpected error switching farm:", err);
+      }
+    },
+    [user, refreshFarms],
+  );
+
   const fetchInventory = useCallback(async () => {
-    if (!user) return;
+    if (!user || farmLoading) return;
 
     try {
       const activeId = selectedFarmId || activeFarm?.farm_group_id;
@@ -113,7 +157,7 @@ export default function InventoryScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user, selectedFarmId, activeFarm]);
+  }, [user, selectedFarmId, activeFarm, farmLoading]);
 
   useEffect(() => {
     fetchInventory();
@@ -206,7 +250,7 @@ export default function InventoryScreen() {
       setIsSelectionMode(false);
       fetchInventory();
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      showAlert("Error", error.message, "error");
     } finally {
       setLoading(false);
     }
@@ -214,7 +258,11 @@ export default function InventoryScreen() {
 
   const recordBulkSale = useCallback(async () => {
     if (!saleAmount || isNaN(Number(saleAmount))) {
-      Alert.alert("Invalid Amount", "Please enter a valid sale amount.");
+      showAlert(
+        "Invalid Amount",
+        "Please enter a valid sale amount.",
+        "warning",
+      );
       return;
     }
 
@@ -235,7 +283,7 @@ export default function InventoryScreen() {
       setIsSelectionMode(false);
       fetchInventory();
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      showAlert("Error", error.message, "error");
     } finally {
       setLoading(false);
     }
@@ -243,9 +291,10 @@ export default function InventoryScreen() {
 
   const handleBulkSold = useCallback(() => {
     if (!isOwner) {
-      Alert.alert(
+      showAlert(
         "Permission Denied",
         "Only the farm owner can mark items as sold.",
+        "warning",
       );
       return;
     }
@@ -277,16 +326,17 @@ export default function InventoryScreen() {
           },
         );
         if (error) throw error;
-        Alert.alert(
+        showAlert(
           "Request Sent",
           "Deletion request has been sent to the farm owner.",
+          "success",
         );
       }
       setSelectedIds([]);
       setIsSelectionMode(false);
       fetchInventory();
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      showAlert("Error", error.message, "error");
     } finally {
       setLoading(false);
     }
@@ -425,7 +475,7 @@ export default function InventoryScreen() {
     [isSelectionMode, selectedIds, router, toggleSelection],
   );
 
-  if (loading && !refreshing) {
+  if ((loading || farmLoading) && !refreshing) {
     return (
       <View style={[styles.centered, { backgroundColor: "#F8FBF9" }]}>
         <ActivityIndicator size="large" color="#2D6A4F" />
@@ -515,7 +565,7 @@ export default function InventoryScreen() {
                     selectedFarmId === farm.farm_group_id &&
                       styles.farmChipActive,
                   ]}
-                  onPress={() => setSelectedFarmId(farm.farm_group_id)}
+                  onPress={() => handleFarmSelect(farm.farm_group_id)}
                 >
                   <Text
                     style={[
@@ -726,6 +776,15 @@ export default function InventoryScreen() {
           onConfirm={confirmDelete}
         />
 
+        <ModernModal
+          visible={alertModalVisible}
+          onClose={() => setAlertModalVisible(false)}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          type={alertConfig.type}
+          onConfirm={alertConfig.onConfirm}
+        />
+
         <FlatList
           data={filteredItems}
           renderItem={renderItem}
@@ -740,15 +799,80 @@ export default function InventoryScreen() {
             />
           }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No watermelons found</Text>
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={() => router.push("/management/add-edit" as any)}
-              >
-                <Text style={styles.emptyButtonText}>Add Your First Item</Text>
-              </TouchableOpacity>
-            </View>
+            search || hasActiveFilters ? (
+              <View style={styles.emptyContainer}>
+                <MaterialIcons
+                  name="search-off"
+                  size={64}
+                  color="#E0E0E0"
+                  style={{ marginBottom: 16 }}
+                />
+                <Text style={styles.emptyText}>No matching watermelons</Text>
+                <Text style={styles.emptySubText}>
+                  Try adjusting your search or filters to find what you&apos;re
+                  looking for.
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyButton}
+                  onPress={() => {
+                    setSearch("");
+                    clearAllFilters();
+                  }}
+                >
+                  <Text style={styles.emptyButtonText}>Clear All Filters</Text>
+                </TouchableOpacity>
+              </View>
+            ) : myFarms.length === 0 ? (
+              <View style={styles.noGroupContainer}>
+                <View style={styles.noGroupIconWrapper}>
+                  <MaterialIcons name="groups" size={64} color="#2D6A4F" />
+                </View>
+                <Text style={styles.noGroupTitle}>No Farm Group Yet</Text>
+                <Text style={styles.noGroupMessage}>
+                  You need to be part of a farm group to manage inventory. Join
+                  one or create your own!
+                </Text>
+                <View style={styles.noGroupActions}>
+                  <TouchableOpacity
+                    style={styles.primaryNoGroupButton}
+                    onPress={() =>
+                      router.push("/management/discover-farms" as any)
+                    }
+                  >
+                    <MaterialIcons name="search" size={20} color="#FFFFFF" />
+                    <Text style={styles.noGroupButtonText}>Join Group</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.secondaryNoGroupButton}
+                    onPress={() => router.push("/management/farm-group" as any)}
+                  >
+                    <MaterialIcons name="add" size={20} color="#2D6A4F" />
+                    <Text style={styles.noGroupButtonTextSecondary}>
+                      Create New
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <MaterialIcons
+                  name="inventory"
+                  size={64}
+                  color="#E0E0E0"
+                  style={{ marginBottom: 16 }}
+                />
+                <Text style={styles.emptyText}>Your inventory is empty</Text>
+                <Text style={styles.emptySubText}>
+                  Start by analyzing the watermelon.
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyButton}
+                  onPress={() => router.push("/analysis" as any)}
+                >
+                  <Text style={styles.emptyButtonText}>Analyze Watermelon</Text>
+                </TouchableOpacity>
+              </View>
+            )
           }
         />
       </View>
@@ -799,7 +923,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  farmSelector: { paddingVertical: 12, paddingHorizontal: 20 },
+  farmSelector: { paddingTop: 12, paddingHorizontal: 20 },
   farmChip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -814,6 +938,7 @@ const styles = StyleSheet.create({
   farmChipTextActive: { color: "#FFFFFF" },
   searchContainer: {
     paddingHorizontal: 24,
+    marginTop: 12,
     marginBottom: 12,
     flexDirection: "row",
     gap: 8,
@@ -981,5 +1106,84 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
+  },
+  emptySubText: {
+    fontSize: 14,
+    color: "#A0A0A0",
+    textAlign: "center",
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  noGroupContainer: {
+    alignItems: "center",
+    marginTop: 60,
+    padding: 32,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 32,
+    marginHorizontal: 8,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+  },
+  noGroupIconWrapper: {
+    width: 120,
+    height: 120,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 60,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  noGroupTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1B4332",
+    marginBottom: 8,
+  },
+  noGroupMessage: {
+    fontSize: 15,
+    color: "#52796F",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  noGroupActions: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+  primaryNoGroupButton: {
+    flex: 1,
+    flexDirection: "row",
+    backgroundColor: "#2D6A4F",
+    paddingVertical: 14,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  secondaryNoGroupButton: {
+    flex: 1,
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 14,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: "#2D6A4F",
+  },
+  noGroupButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  noGroupButtonTextSecondary: {
+    color: "#2D6A4F",
+    fontWeight: "700",
+    fontSize: 14,
   },
 });

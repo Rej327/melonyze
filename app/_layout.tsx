@@ -71,7 +71,7 @@ function RootLayoutNav() {
 
             if (!isNaN(parsedDate.getTime())) {
               setDeadline(parsedDate);
-              setIsTimeBombEnabled(config.is_enabled ?? true);
+              setIsTimeBombEnabled(config.is_enabled);
             }
           }
         }
