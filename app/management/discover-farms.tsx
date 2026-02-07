@@ -237,7 +237,7 @@ export default function DiscoverFarmsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, paddingTop: 16 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: {
     paddingHorizontal: 16,

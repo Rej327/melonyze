@@ -16,7 +16,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface WatermelonDetail {
   watermelon_item_id: string;
@@ -86,6 +85,7 @@ export default function WatermelonDetails() {
 
       setWatermelon({
         ...data,
+        is_deletion_pending: !!data.deletion_requested_by,
         last_analysis: analysisData
           ? {
               frequency: analysisData.watermelon_sound_analysis_frequency,
@@ -185,8 +185,6 @@ export default function WatermelonDetails() {
     }
   };
 
-  const insets = useSafeAreaInsets();
-
   if (loading) {
     return (
       <View style={[styles.centered, { backgroundColor: "#F8FBF9" }]}>
@@ -204,22 +202,6 @@ export default function WatermelonDetails() {
         title={watermelon.watermelon_item_label || "Watermelon Details"}
         subtitle={watermelon.watermelon_item_variety}
         onBack={() => router.back()}
-        rightActions={
-          <>
-            {isOwner && !watermelon.is_deletion_pending && (
-              <TouchableOpacity
-                style={styles.headerActionButton}
-                onPress={() =>
-                  router.push(
-                    `/management/add-edit?id=${watermelon.watermelon_item_id}` as any,
-                  )
-                }
-              >
-                <MaterialIcons name="edit" size={20} color="#FFFFFF" />
-              </TouchableOpacity>
-            )}
-          </>
-        }
       />
       <View style={[styles.container, { backgroundColor: "#F8FBF9" }]}>
         <ModernModal
@@ -407,15 +389,33 @@ export default function WatermelonDetails() {
               </View>
 
               <TouchableOpacity
-                style={styles.editButton}
+                style={[
+                  styles.editButton,
+                  (watermelon.is_deletion_pending ||
+                    watermelon.watermelon_item_harvest_status === "SOLD") && {
+                    opacity: 0.6,
+                  },
+                ]}
                 onPress={() =>
+                  !watermelon.is_deletion_pending &&
+                  watermelon.watermelon_item_harvest_status !== "SOLD" &&
                   router.push({
                     pathname: "/management/add-edit",
                     params: { id: watermelon.watermelon_item_id },
                   } as any)
                 }
+                disabled={
+                  watermelon.is_deletion_pending ||
+                  watermelon.watermelon_item_harvest_status === "SOLD"
+                }
               >
-                <Text style={styles.editButtonText}>Edit Details</Text>
+                <Text style={styles.editButtonText}>
+                  {watermelon.is_deletion_pending
+                    ? "Deletion Pending"
+                    : watermelon.watermelon_item_harvest_status === "SOLD"
+                      ? "Item Sold (Read-Only)"
+                      : "Edit Details"}
+                </Text>
               </TouchableOpacity>
 
               {watermelon.watermelon_item_harvest_status !== "SOLD" &&
@@ -424,18 +424,36 @@ export default function WatermelonDetails() {
                     style={[
                       styles.editButton,
                       { backgroundColor: "#DDB892", marginTop: 12 },
+                      watermelon.is_deletion_pending && { opacity: 0.6 },
                     ]}
                     onPress={handleSale}
+                    disabled={watermelon.is_deletion_pending}
                   >
                     <Text style={styles.editButtonText}>Mark as Sold</Text>
                   </TouchableOpacity>
                 )}
 
               <TouchableOpacity
-                style={styles.deleteButton}
+                style={[
+                  styles.deleteButton,
+                  watermelon.is_deletion_pending && {
+                    backgroundColor: "#FFE3E3",
+                    borderColor: "#FFC1C1",
+                  },
+                ]}
                 onPress={handleDelete}
+                disabled={watermelon.is_deletion_pending}
               >
-                <Text style={styles.deleteButtonText}>Delete Entry</Text>
+                <Text
+                  style={[
+                    styles.deleteButtonText,
+                    watermelon.is_deletion_pending && { color: "#A0A0A0" },
+                  ]}
+                >
+                  {watermelon.is_deletion_pending
+                    ? "Deletion Pending..."
+                    : "Delete Entry"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

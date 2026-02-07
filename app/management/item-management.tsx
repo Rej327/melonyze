@@ -16,13 +16,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ItemManagementScreen() {
   const { user } = useAuth();
   const { activeFarm, isOwner, loading: farmLoading } = useFarm();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -83,10 +81,14 @@ export default function ItemManagementScreen() {
   const handleApprove = async (id: string) => {
     setLoading(true);
     try {
-      const { error } = await supabase.rpc("approve_item_deletion", {
-        p_executing_user_id: user?.id,
-        p_item_id: id,
-      });
+      const { error } = await supabase.rpc(
+        "manage_watermelon_deletion_requests",
+        {
+          p_owner_id: user?.id,
+          p_item_ids: [id],
+          p_action: "ACCEPT",
+        },
+      );
 
       if (error) throw error;
       showAlert(
@@ -105,10 +107,14 @@ export default function ItemManagementScreen() {
   const handleReject = async (id: string) => {
     setLoading(true);
     try {
-      const { error } = await supabase.rpc("reject_item_deletion", {
-        p_executing_user_id: user?.id,
-        p_item_id: id,
-      });
+      const { error } = await supabase.rpc(
+        "manage_watermelon_deletion_requests",
+        {
+          p_owner_id: user?.id,
+          p_item_ids: [id],
+          p_action: "REJECT",
+        },
+      );
 
       if (error) throw error;
       showAlert("Success", "Item deletion request rejected.", "success");
@@ -233,6 +239,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FBF9",
   },
   content: {
+    paddingTop: 16,
     flex: 1,
   },
   header: {

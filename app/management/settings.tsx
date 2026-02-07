@@ -18,7 +18,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function FarmSettings() {
   const { user } = useAuth();
@@ -33,7 +32,6 @@ export default function FarmSettings() {
   });
 
   const router = useRouter();
-  const insets = useSafeAreaInsets();
 
   // Analysis Settings
   const [freqMin, setFreqMin] = useState(100);
@@ -46,6 +44,12 @@ export default function FarmSettings() {
   const [barangay, setBarangay] = useState("Brgy. F. Nanadiego");
   const [municipality, setMunicipality] = useState("Mulanay");
   const [province, setProvince] = useState("Quezon");
+  const [analysisSettingsId, setAnalysisSettingsId] = useState<string | null>(
+    null,
+  );
+  const [addressSettingsId, setAddressSettingsId] = useState<string | null>(
+    null,
+  );
 
   const fetchSettings = useCallback(async () => {
     if (!user) return;
@@ -76,6 +80,7 @@ export default function FarmSettings() {
             analysisData.watermelon_analysis_settings_ready_decay_threshold,
           );
         }
+        setAnalysisSettingsId(analysisData.watermelon_analysis_settings_id);
       }
 
       // Fetch Address Settings
@@ -96,6 +101,7 @@ export default function FarmSettings() {
         );
         setMunicipality(addressData.farmer_address_municipality || "Mulanay");
         setProvince(addressData.farmer_address_province || "Quezon");
+        setAddressSettingsId(addressData.farmer_address_id);
       }
     } catch (error) {
       console.error("Error fetching settings:", error);
@@ -132,30 +138,28 @@ export default function FarmSettings() {
 
     setSaving(true);
     try {
-      // Upsert Analysis Settings
+      const analysisPayload: any = {
+        farmer_account_id: user.id,
+        watermelon_analysis_settings_ready_frequency_min: freqMin,
+        watermelon_analysis_settings_ready_frequency_max: freqMax,
+        watermelon_analysis_settings_ready_amplitude_min: ampMin,
+        watermelon_analysis_settings_ready_decay_threshold: decayThreshold,
+        watermelon_analysis_settings_updated_at: new Date().toISOString(),
+      };
+
+      if (analysisSettingsId) {
+        analysisPayload.watermelon_analysis_settings_id = analysisSettingsId;
+      }
+
       const { error: analysisError } = await supabase
         .from("watermelon_analysis_settings_table")
-        .upsert({
-          farmer_account_id: user.id,
-          watermelon_analysis_settings_ready_frequency_min: freqMin,
-          watermelon_analysis_settings_ready_frequency_max: freqMax,
-          watermelon_analysis_settings_ready_amplitude_min: ampMin,
-          watermelon_analysis_settings_ready_decay_threshold: decayThreshold,
-          watermelon_analysis_settings_updated_at: new Date().toISOString(),
-        });
+        .upsert(analysisPayload);
 
       if (analysisError) throw analysisError;
 
       // Upsert Address Settings - we need to fetch the ID first to ensure we update the right record if multiple exist,
       // but usually there's only one. schema.sql doesn't have a unique constraint on farmer_account_id for address.
       // However, we'll try to find an existing one first to keep it simple and consistent.
-
-      const { data: existingAddress } = await supabase
-        .from("farmer_address_table")
-        .select("farmer_address_id")
-        .eq("farmer_account_id", user.id)
-        .limit(1)
-        .single();
 
       const addressPayload: any = {
         farmer_account_id: user.id,
@@ -166,8 +170,8 @@ export default function FarmSettings() {
         farmer_address_updated_at: new Date().toISOString(),
       };
 
-      if (existingAddress) {
-        addressPayload.farmer_address_id = existingAddress.farmer_address_id;
+      if (addressSettingsId) {
+        addressPayload.farmer_address_id = addressSettingsId;
       }
 
       const { error: addressError } = await supabase

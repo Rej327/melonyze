@@ -215,19 +215,6 @@ export default function FarmGroupScreen() {
         title="Farm Management"
         subtitle={activeFarm?.farm_group_name || "Manage your groups"}
         onBack={() => router.back()}
-        rightActions={
-          <TouchableOpacity
-            style={styles.headerActionButton}
-            onPress={() => {
-              setIsCreating(true);
-              setGroupName("");
-              setGroupDesc("");
-              setModalVisible(true);
-            }}
-          >
-            <MaterialIcons name="add" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        }
       />
       <View style={[styles.container, { backgroundColor: "#F8FBF9" }]}>
         <ModernModal
