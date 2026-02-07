@@ -1,8 +1,11 @@
+import { ModernHeader } from "@/components/ui/modern-header";
 import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
+import { useFarm } from "@/context/farm";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,15 +16,17 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ItemManagementScreen() {
   const { user } = useAuth();
+  const { activeFarm, isOwner, loading: farmLoading } = useFarm();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [itemRequests, setItemRequests] = useState<any[]>([]);
-  const [farmInfo, setFarmInfo] = useState<any>(null);
 
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -50,35 +55,12 @@ export default function ItemManagementScreen() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      // 1. Get profile to check current_farm_group_id
-      const { data: profileData } = await supabase
-        .from("farmer_account_table")
-        .select("*, farm_group_table(*)")
-        .eq("farmer_account_id", user.id)
-        .single();
-
-      if (profileData?.current_farm_group_id) {
-        setFarmInfo(profileData.farm_group_table);
-        // Only fetch if they are the owner of the current farm
-        const { data: farmData } = await supabase
-          .from("farm_group_table")
-          .select("farm_owner_id")
-          .eq("farm_group_id", profileData.current_farm_group_id)
-          .single();
-
-        if (farmData?.farm_owner_id === user.id) {
-          const { data: requests } = await supabase.rpc(
-            "get_deletion_requests",
-            {
-              p_group_id: profileData.current_farm_group_id,
-            },
-          );
-          setItemRequests(requests || []);
-        } else {
-          setItemRequests([]);
-        }
+      if (activeFarm && isOwner) {
+        const { data: requests } = await supabase.rpc("get_deletion_requests", {
+          p_group_id: activeFarm.farm_group_id,
+        });
+        setItemRequests(requests || []);
       } else {
-        setFarmInfo(null);
         setItemRequests([]);
       }
     } catch (error) {
@@ -87,7 +69,7 @@ export default function ItemManagementScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [user, activeFarm, isOwner]);
 
   useEffect(() => {
     fetchData();
@@ -98,24 +80,18 @@ export default function ItemManagementScreen() {
     fetchData();
   };
 
-  const handleManageItemDeletion = async (
-    p_item_ids: string[],
-    action: string,
-  ) => {
+  const handleApprove = async (id: string) => {
     setLoading(true);
     try {
-      const { error } = await supabase.rpc(
-        "manage_watermelon_deletion_requests",
-        {
-          p_owner_id: user?.id,
-          p_item_ids,
-          p_action: action,
-        },
-      );
+      const { error } = await supabase.rpc("approve_item_deletion", {
+        p_executing_user_id: user?.id,
+        p_item_id: id,
+      });
+
       if (error) throw error;
       showAlert(
         "Success",
-        `Request ${action === "ACCEPT" ? "approved" : "rejected"} successfully!`,
+        "Item deletion approved and item removed.",
         "success",
       );
       fetchData();
@@ -126,39 +102,63 @@ export default function ItemManagementScreen() {
     }
   };
 
-  const renderRequestItem = ({ item }: { item: any }) => (
-    <View style={styles.requestCard}>
-      <View style={styles.requestMain}>
-        <Text style={styles.itemLabel}>{item.label}</Text>
-        <Text style={styles.itemVariety}>{item.variety}</Text>
-        <View style={styles.requestedBy}>
-          <MaterialIcons name="person" size={14} color="#6C757D" />
-          <Text style={styles.requestedByText}>
-            Requested by: {item.requested_by_name}
-          </Text>
+  const handleReject = async (id: string) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.rpc("reject_item_deletion", {
+        p_executing_user_id: user?.id,
+        p_item_id: id,
+      });
+
+      if (error) throw error;
+      showAlert("Success", "Item deletion request rejected.", "success");
+      fetchData();
+    } catch (error: any) {
+      showAlert("Error", error.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderRequest = ({ item }: { item: any }) => (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View>
+          <Text style={styles.itemLabel}>{item.label}</Text>
+          <Text style={styles.itemVariety}>{item.variety}</Text>
         </View>
-        <Text style={styles.requestDate}>
-          {new Date(item.requested_at).toLocaleDateString()}
+        <View style={styles.requestBadge}>
+          <Text style={styles.requestBadgeText}>DELETION REQUEST</Text>
+        </View>
+      </View>
+
+      <View style={styles.requestedBy}>
+        <MaterialIcons name="person" size={14} color="#666" />
+        <Text style={styles.requestedByText}>
+          Requested by: {item.requested_by_name}
         </Text>
       </View>
-      <View style={styles.actionButtons}>
+
+      <View style={styles.cardActions}>
         <TouchableOpacity
-          style={[styles.actionBtn, styles.acceptBtn]}
-          onPress={() => handleManageItemDeletion([item.item_id], "ACCEPT")}
+          style={[styles.button, styles.rejectButton]}
+          onPress={() => handleReject(item.item_id)}
         >
-          <MaterialIcons name="check" size={24} color="#FFF" />
+          <MaterialIcons name="close" size={20} color="#D90429" />
+          <Text style={styles.rejectButtonText}>Reject</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.actionBtn, styles.rejectBtn]}
-          onPress={() => handleManageItemDeletion([item.item_id], "REJECT")}
+          style={[styles.button, styles.approveButton]}
+          onPress={() => handleApprove(item.item_id)}
         >
-          <MaterialIcons name="close" size={24} color="#FFF" />
+          <MaterialIcons name="check" size={20} color="#FFFFFF" />
+          <Text style={styles.approveButtonText}>Approve</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  if (loading && !refreshing) {
+  if ((loading || farmLoading) && !refreshing) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#2D6A4F" />
@@ -167,153 +167,197 @@ export default function ItemManagementScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
-          </TouchableOpacity>
-          <View>
-            <Text style={styles.title}>Item Management</Text>
-            {farmInfo && (
-              <Text style={styles.subtitle}>{farmInfo.farm_group_name}</Text>
-            )}
-          </View>
-        </View>
-
-        <FlatList
-          data={itemRequests}
-          renderItem={renderRequestItem}
-          keyExtractor={(item) => item.item_id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={["#2D6A4F"]}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              {!farmInfo ? (
-                <>
-                  <MaterialIcons name="warning" size={80} color="#FFD7D7" />
-                  <Text style={styles.emptyTitle}>No Active Farm</Text>
-                  <Text style={styles.emptyDesc}>
-                    Please select a default farm in &quot;Farm Management&quot;
-                    to manage items.
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <MaterialIcons
-                    name="check-circle"
-                    size={80}
-                    color="#D8F3DC"
-                  />
-                  <Text style={styles.emptyTitle}>No Pending Requests</Text>
-                  <Text style={styles.emptyDesc}>
-                    All deletion requests for {farmInfo.farm_group_name} have
-                    been handled.
-                  </Text>
-                </>
-              )}
-            </View>
-          }
-        />
-
+    <View style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <StatusBar style="light" />
+      <ModernHeader
+        title="Deletion Requests"
+        subtitle={activeFarm?.farm_group_name || "Manage requests"}
+        onBack={() => router.back()}
+      />
+      <View style={[styles.container, { backgroundColor: "#F8FBF9" }]}>
         <ModernModal
           visible={modalVisible}
           onClose={() => setModalVisible(false)}
           title={modalConfig.title}
           message={modalConfig.message}
           type={modalConfig.type}
-          confirmText="OK"
           onConfirm={modalConfig.onConfirm}
         />
+
+        <View style={styles.content}>
+          <FlatList
+            data={itemRequests}
+            renderItem={renderRequest}
+            keyExtractor={(item) => item.item_id}
+            contentContainerStyle={styles.list}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={["#2D6A4F"]}
+              />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <MaterialIcons
+                  name={!activeFarm ? "house" : "check-circle"}
+                  size={80}
+                  color={!activeFarm ? "#E0E0E0" : "#D8F3DC"}
+                />
+                <Text style={styles.emptyTitle}>
+                  {!activeFarm ? "No Farm Selected" : "All Clear!"}
+                </Text>
+                <Text style={styles.emptyDesc}>
+                  {!activeFarm
+                    ? "Please select a farm in Farm Management to manage items."
+                    : "No pending item deletion requests at the moment."}
+                </Text>
+              </View>
+            }
+          />
+        </View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FBF9" },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
-  header: {
-    padding: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FBF9",
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#D8F3DC",
+  centered: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#F8FBF9",
   },
-  title: { fontSize: 24, fontWeight: "800", color: "#1B4332" },
-  subtitle: { fontSize: 13, color: "#52B788", fontWeight: "600" },
-  listContent: { padding: 24 },
-  requestCard: {
-    backgroundColor: "#FFF",
-    padding: 20,
-    borderRadius: 24,
-    marginBottom: 16,
+  content: {
+    flex: 1,
+  },
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    borderWidth: 1,
-    borderColor: "#F0F0F0",
+    justifyContent: "space-between",
+    padding: 16,
+    backgroundColor: "#2D6A4F",
   },
-  requestMain: { flex: 1, marginRight: 16 },
-  itemLabel: { fontSize: 18, fontWeight: "700", color: "#1B4332" },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 2,
+    shadowRadius: 2,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  list: {
+    padding: 24,
+    paddingTop: 8,
+  },
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  itemLabel: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1B4332",
+  },
   itemVariety: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#74C69D",
-    marginTop: 2,
     fontWeight: "600",
+    marginTop: 2,
+  },
+  requestBadge: {
+    backgroundColor: "#FDE2E4",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  requestBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#D90429",
   },
   requestedBy: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
-    gap: 4,
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
   },
-  requestedByText: { fontSize: 12, color: "#6C757D" },
-  requestDate: { fontSize: 11, color: "#A0A0A0", marginTop: 4 },
-  actionButtons: { flexDirection: "row", gap: 12 },
-  actionBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  requestedByText: {
+    fontSize: 13,
+    color: "#666",
+  },
+  cardActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 20,
+  },
+  button: {
+    flex: 1,
+    flexDirection: "row",
+    height: 48,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
+    gap: 8,
   },
-  acceptBtn: { backgroundColor: "#2D6A4F" },
-  rejectBtn: { backgroundColor: "#D90429" },
+  approveButton: {
+    backgroundColor: "#2D6A4F",
+  },
+  approveButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  rejectButton: {
+    backgroundColor: "#FDE2E4",
+  },
+  rejectButtonText: {
+    color: "#D90429",
+    fontWeight: "700",
+    fontSize: 15,
+  },
   emptyContainer: {
     alignItems: "center",
-    marginTop: 100,
-    paddingHorizontal: 40,
+    padding: 40,
+    marginTop: 60,
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: "800",
+    fontWeight: "700",
     color: "#1B4332",
     marginTop: 20,
   },
   emptyDesc: {
     fontSize: 14,
-    color: "#6C757D",
+    color: "#666",
     textAlign: "center",
     marginTop: 8,
+    lineHeight: 20,
   },
 });

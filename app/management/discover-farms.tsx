@@ -1,8 +1,10 @@
+import { ModernHeader } from "@/components/ui/modern-header";
 import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,11 +16,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function DiscoverFarmsScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [allFarms, setAllFarms] = useState<any[]>([]);
@@ -177,18 +181,14 @@ export default function DiscoverFarmsScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Discover Farms</Text>
-        </View>
-
+    <View style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <StatusBar style="light" />
+      <ModernHeader
+        title="Discover Farms"
+        subtitle="Find groups to join"
+        onBack={() => router.back()}
+      />
+      <View style={[styles.container, { backgroundColor: "#F8FBF9" }]}>
         <View style={styles.searchContainer}>
           <View style={styles.searchBar}>
             <MaterialIcons name="search" size={20} color="#6C757D" />
@@ -232,18 +232,20 @@ export default function DiscoverFarmsScreen() {
           onConfirm={modalConfig.onConfirm}
         />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FBF9" },
+  container: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: {
-    padding: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    justifyContent: "space-between",
+    backgroundColor: "#2D6A4F",
   },
   backButton: {
     width: 40,
@@ -253,7 +255,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  title: { fontSize: 24, fontWeight: "800", color: "#1B4332" },
+  title: { fontSize: 20, fontWeight: "700", color: "#FFFFFF" },
   searchContainer: {
     paddingHorizontal: 24,
     marginBottom: 16,

@@ -28,7 +28,6 @@ export default function LoginScreen() {
     type: "info" as any,
   });
   const router = useRouter();
-  const isDark = false;
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -64,10 +63,7 @@ export default function LoginScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={[
-          styles.container,
-          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-        ]}
+        style={[styles.container, { backgroundColor: "#F8FBF9" }]}
       >
         <ModernModal
           visible={alertVisible}
@@ -92,21 +88,16 @@ export default function LoginScreen() {
 
           <View style={styles.form}>
             <View style={styles.inputContainer}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
+              <Text style={[styles.label, { color: "#495057" }]}>
                 Email Address
               </Text>
               <TextInput
                 style={[
                   styles.input,
                   {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                    borderColor: isDark ? "#333333" : "#E0E0E0",
+                    backgroundColor: "#FFFFFF",
+                    color: "#000000",
+                    borderColor: "#E0E0E0",
                   },
                 ]}
                 placeholder="Enter your email"
@@ -119,22 +110,15 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
-                Password
-              </Text>
+              <Text style={[styles.label, { color: "#495057" }]}>Password</Text>
               <View style={styles.passwordInputContainer}>
                 <TextInput
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                      color: isDark ? "#FFFFFF" : "#000000",
-                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                      backgroundColor: "#FFFFFF",
+                      color: "#000000",
+                      borderColor: "#E0E0E0",
                       flex: 1,
                     },
                   ]}
@@ -177,12 +161,7 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <View style={styles.footer}>
-              <Text
-                style={[
-                  styles.footerText,
-                  { color: isDark ? "#A0A0A0" : "#6C757D" },
-                ]}
-              >
+              <Text style={[styles.footerText, { color: "#6C757D" }]}>
                 Don&apos;t have an account?{" "}
               </Text>
               <TouchableOpacity onPress={() => router.push("/(auth)/register")}>

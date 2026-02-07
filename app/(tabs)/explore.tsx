@@ -1,5 +1,6 @@
 import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
+import { useFarm } from "@/context/farm";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -15,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface FarmerAnalytics {
   total_items: number;
@@ -24,25 +26,25 @@ interface FarmerAnalytics {
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
+  const { activeFarm, isOwner, refreshFarms, loading: farmLoading } = useFarm();
   const [profile, setProfile] = useState<any>(null);
 
   const [analytics, setAnalytics] = useState<FarmerAnalytics | null>(null);
-  const [isOwner, setIsOwner] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [signOutVisible, setSignOutVisible] = useState(false);
+  const insets = useSafeAreaInsets();
   const router = useRouter();
-  const isDark = false;
 
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      // Fetch profile
+      // Fetch profile (still need this for email/name)
       const { data: profileData, error: profileError } = await supabase
         .from("farmer_account_table")
-        .select("*, farm_group_table(*)") // Fetch farm_group_table data
+        .select("*")
         .eq("farmer_account_id", user.id)
         .single();
 
@@ -50,16 +52,14 @@ export default function ProfileScreen() {
       setProfile(profileData);
 
       // Fetch analytics (prefer group-based if in a group)
-      if (profileData?.current_farm_group_id) {
-        setIsOwner(profileData.farm_group_table?.farm_owner_id === user.id);
+      if (activeFarm) {
         const { data: analyticsData, error: analyticsError } =
           await supabase.rpc("get_group_analytics", {
-            p_group_id: profileData.current_farm_group_id,
+            p_group_id: activeFarm.farm_group_id,
           });
         if (analyticsError) throw analyticsError;
         setAnalytics(analyticsData[0]);
       } else {
-        setIsOwner(false);
         // No group, no analytics
         setAnalytics({
           total_items: 0,
@@ -73,7 +73,7 @@ export default function ProfileScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [user, activeFarm]);
 
   useEffect(() => {
     fetchData();
@@ -121,14 +121,9 @@ export default function ProfileScreen() {
     }
   };
 
-  if (loading) {
+  if (loading || farmLoading) {
     return (
-      <View
-        style={[
-          styles.centered,
-          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-        ]}
-      >
+      <View style={[styles.centered, { backgroundColor: "#F8FBF9" }]}>
         <ActivityIndicator size="large" color="#2D6A4F" />
       </View>
     );
@@ -136,16 +131,13 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView
-      style={[
-        styles.container,
-        { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-      ]}
+      style={{ flex: 1, backgroundColor: "#F8FBF9" }}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
-          onRefresh={() => {
+          onRefresh={async () => {
             setRefreshing(true);
-            fetchData();
+            await Promise.all([fetchData(), refreshFarms()]);
           }}
           colors={["#2D6A4F"]}
         />
@@ -161,7 +153,7 @@ export default function ProfileScreen() {
         onConfirm={confirmSignOut}
       />
 
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <View style={styles.profileHeader}>
           <TouchableOpacity onPress={pickImage} disabled={uploading}>
             <View style={styles.imageContainer}>
@@ -188,11 +180,11 @@ export default function ProfileScreen() {
               {profile?.farmer_account_last_name}
             </Text>
             <Text style={styles.email}>{profile?.farmer_account_email}</Text>
-            {profile?.farm_group_table ? (
+            {activeFarm ? (
               <View style={styles.activeFarmBadge}>
                 <MaterialIcons name="agriculture" size={12} color="#D8F3DC" />
                 <Text style={styles.activeFarmText}>
-                  {profile.farm_group_table.farm_group_name}
+                  {activeFarm.farm_group_name}
                 </Text>
               </View>
             ) : (
@@ -210,14 +202,9 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.content}>
-        <Text
-          style={[
-            styles.sectionTitle,
-            { color: isDark ? "#FFFFFF" : "#1B4332" },
-          ]}
-        >
-          {profile?.farm_group_table
-            ? `${profile.farm_group_table.farm_group_name} Analytics`
+        <Text style={styles.sectionTitle}>
+          {activeFarm
+            ? `${activeFarm.farm_group_name} Analytics`
             : "Harvest Analytics"}
         </Text>
 
@@ -323,12 +310,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   header: {
-    paddingTop: 40,
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
     backgroundColor: "#2D6A4F",
+    paddingBottom: 32,
+    paddingHorizontal: 24,
   },
   profileHeader: {
     flexDirection: "row",

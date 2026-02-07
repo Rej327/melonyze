@@ -1,8 +1,11 @@
+import { ModernHeader } from "@/components/ui/modern-header";
 import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
+import { useFarm } from "@/context/farm";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,10 +16,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function FarmGroupScreen() {
   const { user } = useAuth();
+  const { activeFarm, myFarms, refreshFarms, loading: farmLoading } = useFarm();
+
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [currentGroup, setCurrentGroup] = useState<any>(null);
@@ -25,8 +29,6 @@ export default function FarmGroupScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const [groupName, setGroupName] = useState("");
   const [groupDesc, setGroupDesc] = useState("");
-  const [profile, setProfile] = useState<any>(null);
-  const [myFarms, setMyFarms] = useState<any[]>([]);
   const [selectedFarmId, setSelectedFarmId] = useState<string | null>(null);
 
   // Modal State
@@ -57,31 +59,10 @@ export default function FarmGroupScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      // 1. Get Profile with current_farm_group_id
-      const { data: profileData } = await supabase
-        .from("farmer_account_table")
-        .select("*, current_farm_group_id")
-        .eq("farmer_account_id", user.id)
-        .single();
-
-      setProfile(profileData);
-
-      // 2. Fetch all user memberships
-      const { data: memberships } = await supabase
-        .from("farm_membership_table")
-        .select("*, farm_group_table(*)")
-        .eq("farmer_account_id", user.id);
-
-      const accepted =
-        memberships?.filter((m) => m.farm_membership_status === "ACCEPTED") ||
-        [];
-      const acceptedFarms = accepted.map((m) => m.farm_group_table);
-      setMyFarms(acceptedFarms);
-
-      // 3. Determine which farm to show details for
-      let activeId = selectedFarmId || profileData?.current_farm_group_id;
-      if (!activeId && acceptedFarms.length > 0) {
-        activeId = acceptedFarms[0].farm_group_id;
+      // 1. Determine which farm to show details for
+      let activeId = selectedFarmId || activeFarm?.farm_group_id;
+      if (!activeId && myFarms.length > 0) {
+        activeId = myFarms[0].farm_group_id;
       }
 
       if (activeId) {
@@ -102,7 +83,7 @@ export default function FarmGroupScreen() {
           .eq("farm_membership_status", "ACCEPTED");
         setMembers(membersData || []);
 
-        // Get Requests (if owner)
+        // If owner, get pending requests
         if (groupData?.farm_owner_id === user.id) {
           const { data: requestsData } = await supabase
             .from("farm_membership_table")
@@ -113,49 +94,101 @@ export default function FarmGroupScreen() {
         } else {
           setRequests([]);
         }
-      } else {
-        setCurrentGroup(null);
-        setMembers([]);
-        setRequests([]);
       }
     } catch (error) {
-      console.error("Error fetching farm data:", error);
+      console.error("Error fetching farm group data:", error);
     } finally {
       setLoading(false);
     }
-  }, [user, selectedFarmId]);
+  }, [user, selectedFarmId, activeFarm, myFarms]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const handleManageRequest = async (membershipId: string, status: string) => {
+  const handleCreateFarm = async () => {
+    if (!groupName) {
+      showAlert("Error", "Please enter a farm name.", "error");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const { error } = await supabase.rpc("manage_farm_membership", {
+      const { error } = await supabase.rpc("create_farm_group", {
         p_owner_id: user?.id,
-        p_membership_id: membershipId,
-        p_status: status,
+        p_name: groupName,
+        p_description: groupDesc,
       });
+
+      if (error) throw error;
+
+      showAlert("Success", "Farm group created successfully!", "success");
+      setIsCreating(false);
+      setGroupName("");
+      setGroupDesc("");
+      await refreshFarms(); // Update global context
+      fetchData();
+    } catch (error: any) {
+      showAlert("Error", error.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setDefaultFarm = async (farmId: string) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.rpc("set_default_farm", {
+        p_farmer_id: user?.id,
+        p_group_id: farmId,
+      });
+
+      if (error) throw error;
+
+      await refreshFarms(); // Update global context
+      showAlert("Success", "Default farm updated.", "success");
+    } catch (error: any) {
+      showAlert("Error", error.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequest = async (
+    requestId: string,
+    status: "ACCEPTED" | "REJECTED",
+  ) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("farm_membership_table")
+        .update({ farm_membership_status: status })
+        .eq("farm_membership_id", requestId);
+
       if (error) throw error;
       fetchData();
     } catch (error: any) {
       showAlert("Error", error.message, "error");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleKickMember = async (membershipId: string, memberName: string) => {
+  const kickMember = async (memberUserId: string) => {
     showAlert(
-      "Confirm Kick",
-      `Are you sure you want to remove ${memberName} from the farm?`,
+      "Confirm Removal",
+      "Are you sure you want to remove this member from the farm?",
       "warning",
       async () => {
         setModalVisible(false);
         setLoading(true);
         try {
-          const { error } = await supabase.rpc("delete_farm_membership", {
-            p_executing_user_id: user?.id,
-            p_membership_id: membershipId,
-          });
+          const { error } = await supabase
+            .from("farm_membership_table")
+            .delete()
+            .eq("farm_group_id", selectedFarmId)
+            .eq("farmer_account_id", memberUserId);
+
           if (error) throw error;
           fetchData();
         } catch (error: any) {
@@ -167,58 +200,7 @@ export default function FarmGroupScreen() {
     );
   };
 
-  const handleCreateGroup = async () => {
-    if (!groupName) {
-      showAlert("Error", "Please enter a group name", "error");
-      return;
-    }
-    setLoading(true);
-    try {
-      const { error } = await supabase.rpc("create_farm_group", {
-        p_owner_id: user?.id,
-        p_name: groupName,
-        p_description: groupDesc,
-      });
-      if (error) throw error;
-      setIsCreating(false);
-
-      // Auto-select the new farm
-      const { data: newGroups } = await supabase
-        .from("farm_group_table")
-        .select("farm_group_id")
-        .eq("farm_owner_id", user?.id)
-        .order("farm_group_created_at", { ascending: false })
-        .limit(1);
-      if (newGroups && newGroups.length > 0) {
-        setSelectedFarmId(newGroups[0].farm_group_id);
-      }
-
-      fetchData();
-    } catch (error: any) {
-      showAlert("Error", error.message, "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSetDefault = async (groupId: string) => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.rpc("set_default_farm", {
-        p_farmer_id: user?.id,
-        p_group_id: groupId,
-      });
-      if (error) throw error;
-      showAlert("Success", "Default farm updated!", "success");
-      fetchData();
-    } catch (error: any) {
-      showAlert("Error", error.message, "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
+  if ((loading || farmLoading) && !isCreating) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#2D6A4F" />
@@ -227,156 +209,155 @@ export default function FarmGroupScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
-      <View style={styles.container}>
-        <View style={styles.header}>
+    <View style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <StatusBar style="light" />
+      <ModernHeader
+        title="Farm Management"
+        subtitle={activeFarm?.farm_group_name || "Manage your groups"}
+        onBack={() => router.back()}
+        rightActions={
           <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
+            style={styles.headerActionButton}
+            onPress={() => {
+              setIsCreating(true);
+              setGroupName("");
+              setGroupDesc("");
+              setModalVisible(true);
+            }}
           >
-            <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
+            <MaterialIcons name="add" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-          <Text style={styles.title}>Farm Management</Text>
-        </View>
-
+        }
+      />
+      <View style={[styles.container, { backgroundColor: "#F8FBF9" }]}>
         <ModernModal
           visible={modalVisible}
           onClose={() => setModalVisible(false)}
           title={modalConfig.title}
           message={modalConfig.message}
           type={modalConfig.type}
-          confirmText={modalConfig.type === "warning" ? "Confirm" : "OK"}
           onConfirm={modalConfig.onConfirm}
         />
 
-        <ModernModal
-          visible={isCreating}
-          onClose={() => setIsCreating(false)}
-          title="Create New Farm Group"
-          confirmText="Create Group"
-          onConfirm={handleCreateGroup}
-          type="info"
-        >
-          <View style={{ width: "100%", marginTop: 10 }}>
-            <TextInput
-              style={styles.input}
-              placeholder="Farm Name"
-              value={groupName}
-              onChangeText={setGroupName}
-              placeholderTextColor="#6C757D"
-            />
-            <TextInput
-              style={[styles.input, { height: 100, textAlignVertical: "top" }]}
-              placeholder="Description"
-              multiline
-              value={groupDesc}
-              onChangeText={setGroupDesc}
-              placeholderTextColor="#6C757D"
-            />
-          </View>
-        </ModernModal>
-
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Farm Selection Strip */}
-          {myFarms.length > 0 && (
-            <View style={styles.farmSelectorSection}>
-              <Text style={styles.sectionSubtitle}>Select Working Farm</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.farmBadgeScroll}
+        <ScrollView contentContainerStyle={styles.scroll}>
+          {/* Farm List Chips */}
+          <View style={styles.farmChips}>
+            {myFarms.map((farm) => (
+              <TouchableOpacity
+                key={farm.farm_group_id}
+                style={[
+                  styles.farmChip,
+                  selectedFarmId === farm.farm_group_id &&
+                    styles.farmChipActive,
+                ]}
+                onPress={() => setSelectedFarmId(farm.farm_group_id)}
               >
-                {myFarms.map((f) => (
-                  <TouchableOpacity
-                    key={f.farm_group_id}
-                    style={[
-                      styles.farmBadge,
-                      selectedFarmId === f.farm_group_id &&
-                        styles.farmBadgeActive,
-                      profile?.current_farm_group_id === f.farm_group_id &&
-                        styles.farmBadgeDefault,
-                    ]}
-                    onPress={() => setSelectedFarmId(f.farm_group_id)}
-                  >
-                    <Text
-                      style={[
-                        styles.farmBadgeText,
-                        selectedFarmId === f.farm_group_id &&
-                          styles.farmBadgeTextActive,
-                      ]}
-                    >
-                      {f.farm_group_name}
-                    </Text>
-                    {profile?.current_farm_group_id === f.farm_group_id && (
-                      <MaterialIcons
-                        name="star"
-                        size={12}
-                        color="#F59E0B"
-                        style={{ marginLeft: 4 }}
-                      />
-                    )}
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity
-                  style={styles.addFarmBadge}
-                  onPress={() => setIsCreating(true)}
+                <Text
+                  style={[
+                    styles.farmChipText,
+                    selectedFarmId === farm.farm_group_id &&
+                      styles.farmChipTextActive,
+                  ]}
                 >
-                  <MaterialIcons name="add" size={20} color="#2D6A4F" />
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          )}
+                  {farm.farm_group_name}
+                </Text>
+                {activeFarm?.farm_group_id === farm.farm_group_id && (
+                  <MaterialIcons
+                    name="star"
+                    size={14}
+                    color="#FFD700"
+                    style={{ marginLeft: 4 }}
+                  />
+                )}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={styles.addFarmChip}
+              onPress={() => setIsCreating(true)}
+            >
+              <MaterialIcons name="add" size={20} color="#2D6A4F" />
+            </TouchableOpacity>
+          </View>
 
-          {currentGroup ? (
-            <View>
-              <View style={styles.groupCard}>
+          {isCreating ? (
+            <View style={styles.createForm}>
+              <Text style={styles.sectionTitle}>Create New Farm</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Farm Name"
+                value={groupName}
+                onChangeText={setGroupName}
+              />
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Description (Optional)"
+                multiline
+                numberOfLines={3}
+                value={groupDesc}
+                onChangeText={setGroupDesc}
+              />
+              <View style={styles.formActions}>
+                <TouchableOpacity
+                  style={[styles.formButton, styles.cancelButton]}
+                  onPress={() => setIsCreating(false)}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.formButton, styles.saveButton]}
+                  onPress={handleCreateFarm}
+                >
+                  <Text style={styles.saveButtonText}>Create Farm</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : currentGroup ? (
+            <View style={styles.details}>
+              <View style={styles.groupInfo}>
                 <View style={styles.groupHeader}>
-                  <MaterialIcons name="agriculture" size={40} color="#2D6A4F" />
-                  <View style={styles.groupInfo}>
+                  <View style={styles.iconBox}>
+                    <MaterialIcons
+                      name="agriculture"
+                      size={32}
+                      color="#FFFFFF"
+                    />
+                  </View>
+                  <View style={styles.titleInfo}>
                     <Text style={styles.groupName}>
                       {currentGroup.farm_group_name}
                     </Text>
-                    <Text style={styles.groupDesc}>
-                      {currentGroup.farm_group_description || "No description"}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.groupFooter}>
-                  <View style={styles.roleBadge}>
-                    <Text style={styles.roleText}>
+                    <Text style={styles.groupOwner}>
+                      Owner:{" "}
                       {currentGroup.farm_owner_id === user?.id
-                        ? "FARM OWNER"
-                        : "MEMBER"}
+                        ? "You"
+                        : "Other"}
                     </Text>
                   </View>
-
-                  {profile?.current_farm_group_id !==
-                  currentGroup.farm_group_id ? (
-                    <TouchableOpacity
-                      style={styles.setDefaultSmallBtn}
-                      onPress={() =>
-                        handleSetDefault(currentGroup.farm_group_id)
-                      }
-                    >
-                      <MaterialIcons
-                        name="star-outline"
-                        size={16}
-                        color="#F59E0B"
-                      />
-                      <Text style={styles.setDefaultText}>Set as Default</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.defaultIndicator}>
-                      <MaterialIcons name="star" size={16} color="#F59E0B" />
-                      <Text style={styles.defaultIndicatorText}>
-                        Default active farm
-                      </Text>
-                    </View>
-                  )}
                 </View>
+
+                <Text style={styles.groupDesc}>
+                  {currentGroup.farm_group_description ||
+                    "No description provided."}
+                </Text>
+
+                {activeFarm?.farm_group_id !== currentGroup.farm_group_id && (
+                  <TouchableOpacity
+                    style={styles.defaultButton}
+                    onPress={() => setDefaultFarm(currentGroup.farm_group_id)}
+                  >
+                    <MaterialIcons
+                      name="star-outline"
+                      size={20}
+                      color="#2D6A4F"
+                    />
+                    <Text style={styles.defaultButtonText}>
+                      Set as Default Farm
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
+              {/* Pending Requests Section */}
               {currentGroup.farm_owner_id === user?.id &&
                 requests.length > 0 && (
                   <View style={styles.section}>
@@ -386,46 +367,56 @@ export default function FarmGroupScreen() {
                     {requests.map((req) => (
                       <View
                         key={req.farm_membership_id}
-                        style={styles.requestItem}
+                        style={styles.requestCard}
                       >
-                        <View style={styles.requestMain}>
-                          <Text style={styles.memberName}>
-                            {req.farmer_account_table.farmer_account_first_name}{" "}
-                            {req.farmer_account_table.farmer_account_last_name}
-                          </Text>
-                          <Text style={styles.memberEmail}>
-                            {req.farmer_account_table.farmer_account_email}
-                          </Text>
+                        <View style={styles.userInfo}>
+                          <View style={styles.userAvatar}>
+                            <Text style={styles.avatarText}>
+                              {
+                                req.farmer_account_table
+                                  ?.farmer_account_first_name?.[0]
+                              }
+                            </Text>
+                          </View>
+                          <View>
+                            <Text style={styles.userName}>
+                              {
+                                req.farmer_account_table
+                                  ?.farmer_account_first_name
+                              }{" "}
+                              {
+                                req.farmer_account_table
+                                  ?.farmer_account_last_name
+                              }
+                            </Text>
+                            <Text style={styles.userEmail}>
+                              {req.farmer_account_table?.farmer_account_email}
+                            </Text>
+                          </View>
                         </View>
-                        <View style={styles.actionButtons}>
-                          <TouchableOpacity
-                            style={[styles.actionBtn, styles.acceptBtn]}
-                            onPress={() =>
-                              handleManageRequest(
-                                req.farm_membership_id,
-                                "ACCEPTED",
-                              )
-                            }
-                          >
-                            <MaterialIcons
-                              name="check"
-                              size={20}
-                              color="#FFF"
-                            />
-                          </TouchableOpacity>
+                        <View style={styles.requestButtons}>
                           <TouchableOpacity
                             style={[styles.actionBtn, styles.rejectBtn]}
                             onPress={() =>
-                              handleManageRequest(
-                                req.farm_membership_id,
-                                "REJECTED",
-                              )
+                              handleRequest(req.farm_membership_id, "REJECTED")
                             }
                           >
                             <MaterialIcons
                               name="close"
                               size={20}
-                              color="#FFF"
+                              color="#D90429"
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.actionBtn, styles.acceptBtn]}
+                            onPress={() =>
+                              handleRequest(req.farm_membership_id, "ACCEPTED")
+                            }
+                          >
+                            <MaterialIcons
+                              name="check"
+                              size={20}
+                              color="#FFFFFF"
                             />
                           </TouchableOpacity>
                         </View>
@@ -434,43 +425,39 @@ export default function FarmGroupScreen() {
                   </View>
                 )}
 
+              {/* Members Section */}
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Farm Members</Text>
-                {members.map((member) => (
-                  <View
-                    key={member.farm_membership_id}
-                    style={styles.memberItem}
-                  >
-                    <View style={styles.memberAvatar}>
-                      <Text style={styles.avatarText}>
-                        {
-                          member.farmer_account_table
-                            .farmer_account_first_name[0]
-                        }
-                      </Text>
-                    </View>
-                    <View style={styles.memberMain}>
-                      <Text style={styles.memberName}>
-                        {member.farmer_account_table.farmer_account_first_name}{" "}
-                        {member.farmer_account_table.farmer_account_last_name}
-                        {member.farmer_account_id ===
-                          currentGroup.farm_owner_id && " (Owner)"}
-                      </Text>
-                      <Text style={styles.memberEmail}>
-                        {member.farmer_account_table.farmer_account_email}
-                      </Text>
+                <Text style={styles.sectionTitle}>
+                  Farm Members ({members.length})
+                </Text>
+                {members.map((mem) => (
+                  <View key={mem.farm_membership_id} style={styles.memberCard}>
+                    <View style={styles.userInfo}>
+                      <View style={styles.userAvatar}>
+                        <Text style={styles.avatarText}>
+                          {
+                            mem.farmer_account_table
+                              ?.farmer_account_first_name?.[0]
+                          }
+                        </Text>
+                      </View>
+                      <View>
+                        <Text style={styles.userName}>
+                          {mem.farmer_account_table?.farmer_account_first_name}{" "}
+                          {mem.farmer_account_table?.farmer_account_last_name}
+                          {mem.farmer_account_id ===
+                            currentGroup.farm_owner_id && " (Owner)"}
+                        </Text>
+                        <Text style={styles.userEmail}>
+                          {mem.farmer_account_table?.farmer_account_email}
+                        </Text>
+                      </View>
                     </View>
                     {currentGroup.farm_owner_id === user?.id &&
-                      member.farmer_account_id !== user?.id && (
+                      mem.farmer_account_id !== user?.id && (
                         <TouchableOpacity
                           style={styles.kickBtn}
-                          onPress={() =>
-                            handleKickMember(
-                              member.farm_membership_id,
-                              member.farmer_account_table
-                                .farmer_account_first_name,
-                            )
-                          }
+                          onPress={() => kickMember(mem.farmer_account_id)}
                         >
                           <MaterialIcons
                             name="person-remove"
@@ -484,48 +471,36 @@ export default function FarmGroupScreen() {
               </View>
             </View>
           ) : (
-            <View style={styles.noGroupContainer}>
-              <MaterialIcons name="group-add" size={80} color="#D8F3DC" />
-              <Text style={styles.noGroupTitle}>No Farm Group Yet</Text>
-              <Text style={styles.noGroupDesc}>
-                Join an existing farm group to collaborate or create your own if
-                you are a farm owner.
+            <View style={styles.emptyDetails}>
+              <MaterialIcons name="house" size={80} color="#E0E0E0" />
+              <Text style={styles.emptyTitle}>No Farms Joined</Text>
+              <Text style={styles.emptyDesc}>
+                You haven&apos;t created or joined any farms yet. Start by
+                creating your own or discovering available farms.
               </Text>
-
               <TouchableOpacity
-                style={styles.primaryBtn}
-                onPress={() => setIsCreating(true)}
+                style={styles.discoverButton}
+                onPress={() => router.push("/management/discover-farms")}
               >
-                <Text style={styles.primaryBtnText}>Create a Farm</Text>
+                <Text style={styles.discoverButtonText}>Discover Farms</Text>
               </TouchableOpacity>
             </View>
           )}
-
-          <TouchableOpacity
-            style={styles.discoverCard}
-            onPress={() => router.push("/management/discover-farms" as any)}
-          >
-            <View style={styles.discoverContent}>
-              <View style={styles.discoverIconContainer}>
-                <MaterialIcons name="explore" size={32} color="#2D6A4F" />
-              </View>
-              <View style={styles.discoverTextContainer}>
-                <Text style={styles.discoverTitle}>Discover More Farms</Text>
-                <Text style={styles.discoverDesc}>
-                  Join other farm groups to collaborate and expand your network.
-                </Text>
-              </View>
-              <MaterialIcons
-                name="chevron-right"
-                size={24}
-                color="#2D6A4F"
-                style={{ opacity: 0.5 }}
-              />
-            </View>
-          </TouchableOpacity>
         </ScrollView>
+
+        {!isCreating && (
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.discoverButtonOutlined}
+              onPress={() => router.push("/management/discover-farms")}
+            >
+              <MaterialIcons name="search" size={20} color="#2D6A4F" />
+              <Text style={styles.discoverText}>Find More Farms</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -533,268 +508,207 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FBF9" },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: {
-    padding: 24,
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    justifyContent: "space-between",
+    padding: 16,
+    backgroundColor: "#2D6A4F",
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FFF",
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 2,
+  },
+  headerTitle: { fontSize: 20, fontWeight: "700", color: "#FFFFFF" },
+  scroll: { paddingBottom: 100 },
+  farmChips: {
+    flexDirection: "row",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  farmChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    backgroundColor: "#FFF",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  farmChipActive: { backgroundColor: "#2D6A4F", borderColor: "#2D6A4F" },
+  farmChipText: { fontSize: 14, fontWeight: "600", color: "#1B4332" },
+  farmChipTextActive: { color: "#FFF" },
+  addFarmChip: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#D8F3DC",
     justifyContent: "center",
     alignItems: "center",
   },
-  title: { fontSize: 24, fontWeight: "800", color: "#1B4332" },
-  scrollContent: { padding: 24 },
-  groupCard: {
-    backgroundColor: "#FFF",
-    padding: 20,
-    borderRadius: 24,
-    elevation: 4,
-    shadowColor: "#2D6A4F",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    marginBottom: 24,
-  },
-  groupHeader: { flexDirection: "row", alignItems: "center", gap: 16 },
-  groupInfo: { flex: 1 },
-  groupName: { fontSize: 20, fontWeight: "800", color: "#1B4332" },
-  groupDesc: { fontSize: 14, color: "#6C757D", marginTop: 4 },
-  roleBadge: {
-    marginTop: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: "#D8F3DC",
-    borderRadius: 8,
-    alignSelf: "flex-start",
-  },
-  roleText: { fontSize: 10, fontWeight: "800", color: "#2D6A4F" },
-  section: { marginTop: 24, alignSelf: "stretch" },
+  createForm: { padding: 24 },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: "#1B4332",
     marginBottom: 16,
   },
-  memberItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+  input: {
     backgroundColor: "#FFF",
-    padding: 12,
-    borderRadius: 16,
-    marginBottom: 10,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 52,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    marginBottom: 16,
   },
-  memberAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#D8F3DC",
+  textArea: { height: 100, paddingTop: 12 },
+  formActions: { flexDirection: "row", gap: 12 },
+  formButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
-  avatarText: { fontWeight: "700", color: "#2D6A4F" },
-  memberName: { fontSize: 16, fontWeight: "600", color: "#1B4332" },
-  memberEmail: { fontSize: 12, color: "#6C757D" },
-  requestItem: {
+  cancelButton: { backgroundColor: "#F0F0F0" },
+  cancelButtonText: { fontWeight: "700", color: "#666" },
+  saveButton: { backgroundColor: "#2D6A4F" },
+  saveButtonText: { fontWeight: "700", color: "#FFF" },
+  details: { padding: 24 },
+  groupInfo: {
+    backgroundColor: "#FFF",
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 24,
+    elevation: 4,
+  },
+  groupHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 16,
+    marginBottom: 16,
+  },
+  iconBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: "#2D6A4F",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  titleInfo: { flex: 1 },
+  groupName: { fontSize: 22, fontWeight: "800", color: "#1B4332" },
+  groupOwner: { fontSize: 13, color: "#74C69D", fontWeight: "600" },
+  groupDesc: { fontSize: 15, color: "#666", lineHeight: 22 },
+  defaultButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+  },
+  defaultButtonText: { fontSize: 15, fontWeight: "700", color: "#2D6A4F" },
+  section: { marginBottom: 32 },
+  requestCard: {
+    flexDirection: "row",
     backgroundColor: "#FFF",
     padding: 16,
-    borderRadius: 16,
-    marginBottom: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: "#2D6A4F",
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
   },
-  actionButtons: { flexDirection: "row", gap: 8 },
-  actionBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  memberCard: {
+    flexDirection: "row",
+    backgroundColor: "#FFF",
+    padding: 16,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  userInfo: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  userAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#95D5B2",
     justifyContent: "center",
     alignItems: "center",
   },
-  acceptBtn: { backgroundColor: "#2D6A4F" },
-  rejectBtn: { backgroundColor: "#D90429" },
-  noGroupContainer: {
+  avatarText: { fontSize: 18, fontWeight: "800", color: "#FFF" },
+  userName: { fontSize: 16, fontWeight: "700", color: "#1B4332" },
+  userEmail: { fontSize: 12, color: "#999" },
+  requestButtons: { flexDirection: "row", gap: 8 },
+  actionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 40,
-    width: "100%",
   },
-  noGroupTitle: {
-    fontSize: 24,
-    fontWeight: "800",
+  rejectBtn: { backgroundColor: "#FDE2E4" },
+  acceptBtn: { backgroundColor: "#2D6A4F" },
+  kickBtn: { padding: 8 },
+  emptyDetails: { alignItems: "center", padding: 40, marginTop: 40 },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "700",
     color: "#1B4332",
     marginTop: 20,
   },
-  noGroupDesc: {
-    textAlign: "center",
-    color: "#6C757D",
-    marginTop: 10,
-    marginBottom: 30,
-  },
-  primaryBtn: {
-    backgroundColor: "#2D6A4F",
-    paddingHorizontal: 30,
-    paddingVertical: 15,
-    borderRadius: 15,
-  },
-  primaryBtnText: { color: "#FFF", fontWeight: "700", fontSize: 16 },
-  farmItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#FFF",
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 10,
-  },
-  farmOwner: { fontSize: 12, color: "#74C69D" },
-  farmMain: { flex: 1, marginRight: 12 },
-  memberMain: { flex: 1 },
-  requestMain: { flex: 1 },
-  joinBtn: {
-    backgroundColor: "#D8F3DC",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    minWidth: 80,
-    alignItems: "center",
-  },
-  joinBtnDisabled: {
-    backgroundColor: "#F0F0F0",
-  },
-  joinBtnText: { color: "#2D6A4F", fontWeight: "700" },
-  joinBtnTextDisabled: {
-    color: "#A0A0A0",
-  },
-  kickBtn: {
-    padding: 8,
-  },
-  input: {
-    backgroundColor: "#F8FBF9",
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 16,
-  },
-  emptyText: { color: "#6C757D", textAlign: "center", marginTop: 20 },
-  farmName: { fontSize: 18, fontWeight: "700", color: "#1B4332" },
-  farmSelectorSection: { marginBottom: 20 },
-  sectionSubtitle: {
+  emptyDesc: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#6C757D",
-    marginBottom: 12,
+    color: "#666",
+    textAlign: "center",
+    marginTop: 12,
+    lineHeight: 22,
   },
-  farmBadgeScroll: { flexDirection: "row" },
-  farmBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: "#FFF",
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
+  discoverButton: {
+    backgroundColor: "#2D6A4F",
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginTop: 24,
+  },
+  discoverButtonText: { color: "#FFF", fontWeight: "700", fontSize: 16 },
+  footer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 24,
+    backgroundColor: "#F8FBF9",
+  },
+  discoverButtonOutlined: {
     flexDirection: "row",
     alignItems: "center",
-  },
-  farmBadgeActive: {
-    backgroundColor: "#2D6A4F",
+    justifyContent: "center",
+    gap: 8,
+    height: 56,
+    borderRadius: 16,
+    borderWidth: 2,
     borderColor: "#2D6A4F",
+    backgroundColor: "#FFF",
   },
-  farmBadgeDefault: {
-    borderColor: "#F59E0B",
-    borderWidth: 1,
-  },
-  farmBadgeText: { color: "#495057", fontWeight: "600" },
-  farmBadgeTextActive: { color: "#FFF" },
-  addFarmBadge: {
+  discoverText: { fontSize: 16, fontWeight: "700", color: "#2D6A4F" },
+  headerActionButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: "#D8F3DC",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  groupFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
-    paddingTop: 16,
-  },
-  setDefaultSmallBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#FFFBEB",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#FEF3C7",
-  },
-  setDefaultText: { color: "#D97706", fontSize: 12, fontWeight: "700" },
-  defaultIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  defaultIndicatorText: { color: "#F59E0B", fontSize: 12, fontWeight: "700" },
-  joinedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#E9F5EE",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  discoverCard: {
-    marginTop: 24,
-    backgroundColor: "#FFF",
-    borderRadius: 24,
-    padding: 20,
-    elevation: 4,
-    shadowColor: "#2D6A4F",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    borderWidth: 1,
-    borderColor: "#D8F3DC",
-  },
-  discoverContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  discoverIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    backgroundColor: "#D8F3DC",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 16,
   },
-  discoverTextContainer: {
-    flex: 1,
-  },
-  discoverTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#1B4332",
-    marginBottom: 4,
-  },
-  discoverDesc: {
-    fontSize: 13,
-    color: "#6C757D",
-    lineHeight: 18,
-  },
-  joinedBadgeText: { color: "#2D6A4F", fontSize: 12, fontWeight: "700" },
 });

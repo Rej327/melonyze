@@ -35,9 +35,9 @@ export default function RegisterScreen() {
     onConfirm: undefined as any,
   });
   const router = useRouter();
-  const isDark = false;
 
   const handleRegister = async () => {
+    // Comprehensive validation
     if (
       !email ||
       !password ||
@@ -47,8 +47,21 @@ export default function RegisterScreen() {
       !contactNumber
     ) {
       setAlertConfig({
-        title: "Error",
-        message: "Please fill in all fields",
+        title: "Missing Information",
+        message: "Please fill in all required fields to create your account.",
+        type: "warning",
+        onConfirm: undefined,
+      });
+      setAlertVisible(true);
+      return;
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setAlertConfig({
+        title: "Invalid Email",
+        message: "Please enter a valid email address (e.g., juan@example.com).",
         type: "error",
         onConfirm: undefined,
       });
@@ -56,10 +69,38 @@ export default function RegisterScreen() {
       return;
     }
 
+    // Password strength validation
+    if (password.length < 8) {
+      setAlertConfig({
+        title: "Weak Password",
+        message:
+          "Your password must be at least 8 characters long for security.",
+        type: "warning",
+        onConfirm: undefined,
+      });
+      setAlertVisible(true);
+      return;
+    }
+
+    // Password match validation
     if (password !== confirmPassword) {
       setAlertConfig({
-        title: "Error",
-        message: "Passwords do not match",
+        title: "Passwords Don't Match",
+        message:
+          "The passwords you entered don't match. Please check and try again.",
+        type: "error",
+        onConfirm: undefined,
+      });
+      setAlertVisible(true);
+      return;
+    }
+
+    // Phone number validation (basic)
+    const phoneRegex = /^[0-9\s\-\+\(\)]{10,}$/;
+    if (!phoneRegex.test(contactNumber)) {
+      setAlertConfig({
+        title: "Invalid Phone Number",
+        message: "Please enter a valid contact number (at least 10 digits).",
         type: "error",
         onConfirm: undefined,
       });
@@ -76,11 +117,28 @@ export default function RegisterScreen() {
         password,
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        // Handle duplicate account
+        if (
+          authError.message.includes("already registered") ||
+          authError.message.includes("User already registered")
+        ) {
+          setAlertConfig({
+            title: "Account Already Exists",
+            message:
+              "An account with this email already exists. Please sign in or use a different email address.",
+            type: "warning",
+            onConfirm: () => router.push("/(auth)/login"),
+          });
+          setAlertVisible(true);
+          setLoading(false);
+          return;
+        }
+        throw authError;
+      }
 
       if (data.user) {
         // 2. Create profile in farmer_account_table
-        // Note: The trigger 'on_farmer_created' in SQL will automatically handle analysis settings creation
         const { error: profileError } = await supabase
           .from("farmer_account_table")
           .insert([
@@ -95,22 +153,34 @@ export default function RegisterScreen() {
 
         if (profileError) {
           console.error("Profile creation error:", profileError);
-          // We might want to handle this edge case (auth created but profile failed)
-          // But with RLS and triggers, it should be robust.
+          setAlertConfig({
+            title: "Profile Setup Error",
+            message:
+              "Your account was created but there was an issue setting up your profile. Please contact support.",
+            type: "error",
+            onConfirm: undefined,
+          });
+          setAlertVisible(true);
+          setLoading(false);
+          return;
         }
 
         setAlertConfig({
-          title: "Success",
-          message: "Account created! Please check your email for confirmation.",
+          title: "Welcome Aboard! 🎉",
+          message:
+            "Your account has been created successfully. You can now sign in and start managing your watermelon harvest!",
           type: "success",
           onConfirm: () => router.replace("/(auth)/login"),
         });
         setAlertVisible(true);
       }
     } catch (error: any) {
+      console.error("Registration error:", error);
       setAlertConfig({
         title: "Registration Failed",
-        message: error.message,
+        message:
+          error.message ||
+          "We couldn't create your account. Please try again or contact support if the problem persists.",
         type: "error",
         onConfirm: undefined,
       });
@@ -124,10 +194,7 @@ export default function RegisterScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={[
-          styles.container,
-          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-        ]}
+        style={[styles.container, { backgroundColor: "#F8FBF9" }]}
       >
         <ModernModal
           visible={alertVisible}
@@ -160,21 +227,16 @@ export default function RegisterScreen() {
               <View
                 style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}
               >
-                <Text
-                  style={[
-                    styles.label,
-                    { color: isDark ? "#A0A0A0" : "#495057" },
-                  ]}
-                >
+                <Text style={[styles.label, { color: "#495057" }]}>
                   First Name
                 </Text>
                 <TextInput
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                      color: isDark ? "#FFFFFF" : "#000000",
-                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                      backgroundColor: "#FFFFFF",
+                      color: "#000000",
+                      borderColor: "#E0E0E0",
                     },
                   ]}
                   placeholder="Juan"
@@ -184,21 +246,16 @@ export default function RegisterScreen() {
                 />
               </View>
               <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
-                <Text
-                  style={[
-                    styles.label,
-                    { color: isDark ? "#A0A0A0" : "#495057" },
-                  ]}
-                >
+                <Text style={[styles.label, { color: "#495057" }]}>
                   Last Name
                 </Text>
                 <TextInput
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                      color: isDark ? "#FFFFFF" : "#000000",
-                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                      backgroundColor: "#FFFFFF",
+                      color: "#000000",
+                      borderColor: "#E0E0E0",
                     },
                   ]}
                   placeholder="Dela Cruz"
@@ -210,21 +267,16 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
+              <Text style={[styles.label, { color: "#495057" }]}>
                 Email Address
               </Text>
               <TextInput
                 style={[
                   styles.input,
                   {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                    borderColor: isDark ? "#333333" : "#E0E0E0",
+                    backgroundColor: "#FFFFFF",
+                    color: "#000000",
+                    borderColor: "#E0E0E0",
                   },
                 ]}
                 placeholder="juan.delacruz@example.com"
@@ -237,21 +289,16 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
+              <Text style={[styles.label, { color: "#495057" }]}>
                 Contact Number
               </Text>
               <TextInput
                 style={[
                   styles.input,
                   {
-                    backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                    color: isDark ? "#FFFFFF" : "#000000",
-                    borderColor: isDark ? "#333333" : "#E0E0E0",
+                    backgroundColor: "#FFFFFF",
+                    color: "#000000",
+                    borderColor: "#E0E0E0",
                   },
                 ]}
                 placeholder="0917 123 4567"
@@ -263,22 +310,15 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
-                Password
-              </Text>
+              <Text style={[styles.label, { color: "#495057" }]}>Password</Text>
               <View style={styles.passwordInputContainer}>
                 <TextInput
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                      color: isDark ? "#FFFFFF" : "#000000",
-                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                      backgroundColor: "#FFFFFF",
+                      color: "#000000",
+                      borderColor: "#E0E0E0",
                       flex: 1,
                     },
                   ]}
@@ -302,12 +342,7 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text
-                style={[
-                  styles.label,
-                  { color: isDark ? "#A0A0A0" : "#495057" },
-                ]}
-              >
+              <Text style={[styles.label, { color: "#495057" }]}>
                 Confirm Password
               </Text>
               <View style={styles.passwordInputContainer}>
@@ -315,9 +350,9 @@ export default function RegisterScreen() {
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                      color: isDark ? "#FFFFFF" : "#000000",
-                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                      backgroundColor: "#FFFFFF",
+                      color: "#000000",
+                      borderColor: "#E0E0E0",
                       flex: 1,
                     },
                   ]}
@@ -353,12 +388,7 @@ export default function RegisterScreen() {
             </TouchableOpacity>
 
             <View style={styles.footer}>
-              <Text
-                style={[
-                  styles.footerText,
-                  { color: isDark ? "#A0A0A0" : "#6C757D" },
-                ]}
-              >
+              <Text style={[styles.footerText, { color: "#6C757D" }]}>
                 Already have an account?{" "}
               </Text>
               <TouchableOpacity onPress={() => router.push("/(auth)/login")}>

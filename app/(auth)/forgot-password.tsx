@@ -25,7 +25,6 @@ export default function ForgotPasswordScreen() {
     type: "info" as any,
   });
   const router = useRouter();
-  const isDark = false;
 
   const handleResetPassword = async () => {
     if (!email) {
@@ -65,10 +64,7 @@ export default function ForgotPasswordScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={[
-          styles.container,
-          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-        ]}
+        style={[styles.container, { backgroundColor: "#F8FBF9" }]}
       >
         <ModernModal
           visible={alertVisible}
@@ -102,21 +98,16 @@ export default function ForgotPasswordScreen() {
 
             <View style={styles.form}>
               <View style={styles.inputContainer}>
-                <Text
-                  style={[
-                    styles.label,
-                    { color: isDark ? "#A0A0A0" : "#495057" },
-                  ]}
-                >
+                <Text style={[styles.label, { color: "#495057" }]}>
                   Email Address
                 </Text>
                 <TextInput
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                      color: isDark ? "#FFFFFF" : "#000000",
-                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                      backgroundColor: "#FFFFFF",
+                      color: "#000000",
+                      borderColor: "#E0E0E0",
                     },
                   ]}
                   placeholder="Enter your email"

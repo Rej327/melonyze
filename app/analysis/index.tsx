@@ -1,4 +1,5 @@
 import { analyzeAudioBuffer, analyzeMetering, parseWav } from "@/app/utils/dsp";
+import { ModernHeader } from "@/components/ui/modern-header";
 import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
 import { supabase } from "@/lib/supabase";
@@ -15,12 +16,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function SoundAnalysisScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const isDark = false;
 
   const [step, setStep] = useState(1); // 1: Calibration, 2: Recording, 3: Result
   const [isRecording, setIsRecording] = useState(false);
@@ -265,28 +264,25 @@ export default function SoundAnalysisScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+    <View style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <ModernHeader
+        title="Ripeness Analyzer"
+        subtitle="Acoustic resonance testing"
+        onBack={handleBack}
+      />
+      <ModernModal
+        visible={alertVisible}
+        onClose={() => setAlertVisible(false)}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type="error"
+      />
       <ScrollView
         contentContainerStyle={[
           styles.container,
-          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
+          { backgroundColor: "#F8FBF9" },
         ]}
       >
-        <ModernModal
-          visible={alertVisible}
-          onClose={() => setAlertVisible(false)}
-          title={alertConfig.title}
-          message={alertConfig.message}
-          type="error"
-        />
-        <View style={styles.header}>
-          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Ripeness Analyzer</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
         <View style={styles.progressContainer}>
           <View style={styles.progressDots}>
             <View style={[styles.dot, step >= 1 && styles.activeDot]} />
@@ -551,28 +547,28 @@ export default function SoundAnalysisScreen() {
           )}
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FBF9" },
   header: {
-    paddingTop: 20,
-    paddingHorizontal: 24,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+    backgroundColor: "#2D6A4F",
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#D8F3DC",
+    // backgroundColor: "#D8F3DC",
     justifyContent: "center",
     alignItems: "center",
   },
-  title: { fontSize: 18, fontWeight: "700", color: "#1B4332" },
+  title: { fontSize: 20, fontWeight: "700", color: "#FFFFFF" },
   progressContainer: {
     paddingHorizontal: 24,
     marginTop: 20,

@@ -2,10 +2,12 @@ import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
+import { Appearance } from "react-native";
 import "react-native-reanimated";
 
 import { LoadingScreen } from "@/components/loading-screen";
 import { AuthProvider, useAuth } from "@/context/auth";
+import { FarmProvider } from "@/context/farm";
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -53,16 +55,23 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
+  // Force light mode
+  useEffect(() => {
+    Appearance.setColorScheme("light");
+  }, []);
+
   return (
     <AuthProvider>
-      <ThemeProvider value={DefaultTheme}>
-        <RootLayoutNav />
-        <StatusBar
-          style="light"
-          backgroundColor="#2D6A4F"
-          translucent={false}
-        />
-      </ThemeProvider>
+      <FarmProvider>
+        <ThemeProvider value={DefaultTheme}>
+          <RootLayoutNav />
+          <StatusBar
+            style="light"
+            backgroundColor="#2D6A4F"
+            translucent={false}
+          />
+        </ThemeProvider>
+      </FarmProvider>
     </AuthProvider>
   );
 }

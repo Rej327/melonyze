@@ -1,9 +1,11 @@
+import { ModernHeader } from "@/components/ui/modern-header";
 import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,7 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface WatermelonDetail {
   watermelon_item_id: string;
@@ -32,8 +34,10 @@ interface WatermelonDetail {
   last_sweetness?: number;
   farm_group_table?: {
     farm_owner_id: string;
+    farm_group_id: string;
   };
-  farm_group_id?: string; // Added for sale function
+  farm_group_id?: string;
+  is_deletion_pending?: boolean;
 }
 
 export default function WatermelonDetails() {
@@ -46,7 +50,11 @@ export default function WatermelonDetails() {
   const [isSaleModalVisible, setIsSaleModalVisible] = useState(false);
   const [saleAmount, setSaleAmount] = useState("");
   const router = useRouter();
-  const isDark = false;
+
+  const isOwner = React.useMemo(
+    () => watermelon?.farm_group_table?.farm_owner_id === user?.id,
+    [watermelon, user],
+  );
 
   const fetchDetails = useCallback(async () => {
     try {
@@ -101,7 +109,6 @@ export default function WatermelonDetails() {
   }, [fetchDetails]);
 
   const handleDelete = () => {
-    const isOwner = watermelon?.farm_group_table?.farm_owner_id === user?.id;
     setDeleteConfig({
       title: isOwner ? "Confirm Delete" : "Request Delete",
       message: isOwner
@@ -178,14 +185,11 @@ export default function WatermelonDetails() {
     }
   };
 
+  const insets = useSafeAreaInsets();
+
   if (loading) {
     return (
-      <View
-        style={[
-          styles.centered,
-          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-        ]}
-      >
+      <View style={[styles.centered, { backgroundColor: "#F8FBF9" }]}>
         <ActivityIndicator size="large" color="#2D6A4F" />
       </View>
     );
@@ -194,13 +198,30 @@ export default function WatermelonDetails() {
   if (!watermelon) return null;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
-      <View
-        style={[
-          styles.container,
-          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-        ]}
-      >
+    <View style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <StatusBar style="light" />
+      <ModernHeader
+        title={watermelon.watermelon_item_label || "Watermelon Details"}
+        subtitle={watermelon.watermelon_item_variety}
+        onBack={() => router.back()}
+        rightActions={
+          <>
+            {isOwner && !watermelon.is_deletion_pending && (
+              <TouchableOpacity
+                style={styles.headerActionButton}
+                onPress={() =>
+                  router.push(
+                    `/management/add-edit?id=${watermelon.watermelon_item_id}` as any,
+                  )
+                }
+              >
+                <MaterialIcons name="edit" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            )}
+          </>
+        }
+      />
+      <View style={[styles.container, { backgroundColor: "#F8FBF9" }]}>
         <ModernModal
           visible={errorVisible}
           onClose={() => setErrorVisible(false)}
@@ -250,18 +271,7 @@ export default function WatermelonDetails() {
           </View>
         </ModernModal>
 
-        <ScrollView>
-          <View style={styles.header}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Details</Text>
-            <View style={{ width: 40 }} />
-          </View>
-
+        <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.content}>
             <View style={styles.imageContainer}>
               <Image
@@ -281,12 +291,7 @@ export default function WatermelonDetails() {
 
             <View style={styles.infoSection}>
               <View style={styles.titleRow}>
-                <Text
-                  style={[
-                    styles.variety,
-                    { color: isDark ? "#FFFFFF" : "#1B4332" },
-                  ]}
-                >
+                <Text style={[styles.variety, { color: "#1B4332" }]}>
                   {watermelon.watermelon_item_variety}
                 </Text>
                 <View
@@ -436,7 +441,7 @@ export default function WatermelonDetails() {
           </View>
         </ScrollView>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -654,5 +659,17 @@ const styles = StyleSheet.create({
     color: "#D90429",
     fontSize: 16,
     fontWeight: "700",
+  },
+  headerActionButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scrollContent: {
+    paddingBottom: 40,
+    paddingTop: 16,
   },
 });

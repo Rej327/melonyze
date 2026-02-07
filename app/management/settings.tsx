@@ -1,9 +1,11 @@
+import { ModernHeader } from "@/components/ui/modern-header";
 import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import { useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -16,7 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function FarmSettings() {
   const { user } = useAuth();
@@ -31,7 +33,7 @@ export default function FarmSettings() {
   });
 
   const router = useRouter();
-  const isDark = false;
+  const insets = useSafeAreaInsets();
 
   // Analysis Settings
   const [freqMin, setFreqMin] = useState(100);
@@ -130,75 +132,49 @@ export default function FarmSettings() {
 
     setSaving(true);
     try {
-      // Check if analysis settings exist
-      const { data: existingAnalysis } = await supabase
+      // Upsert Analysis Settings
+      const { error: analysisError } = await supabase
         .from("watermelon_analysis_settings_table")
-        .select("*")
-        .eq("farmer_account_id", user.id)
-        .single();
+        .upsert({
+          farmer_account_id: user.id,
+          watermelon_analysis_settings_ready_frequency_min: freqMin,
+          watermelon_analysis_settings_ready_frequency_max: freqMax,
+          watermelon_analysis_settings_ready_amplitude_min: ampMin,
+          watermelon_analysis_settings_ready_decay_threshold: decayThreshold,
+          watermelon_analysis_settings_updated_at: new Date().toISOString(),
+        });
 
-      if (existingAnalysis) {
-        // Update existing settings
-        const { error: analysisError } = await supabase
-          .from("watermelon_analysis_settings_table")
-          .update({
-            watermelon_analysis_settings_ready_frequency_min: freqMin,
-            watermelon_analysis_settings_ready_frequency_max: freqMax,
-            watermelon_analysis_settings_ready_amplitude_min: ampMin,
-            watermelon_analysis_settings_ready_decay_threshold: decayThreshold,
-          })
-          .eq("farmer_account_id", user.id);
+      if (analysisError) throw analysisError;
 
-        if (analysisError) throw analysisError;
-      } else {
-        // Insert new settings
-        const { error: analysisError } = await supabase
-          .from("watermelon_analysis_settings_table")
-          .insert({
-            farmer_account_id: user.id,
-            watermelon_analysis_settings_ready_frequency_min: freqMin,
-            watermelon_analysis_settings_ready_frequency_max: freqMax,
-            watermelon_analysis_settings_ready_amplitude_min: ampMin,
-            watermelon_analysis_settings_ready_decay_threshold: decayThreshold,
-          });
+      // Upsert Address Settings - we need to fetch the ID first to ensure we update the right record if multiple exist,
+      // but usually there's only one. schema.sql doesn't have a unique constraint on farmer_account_id for address.
+      // However, we'll try to find an existing one first to keep it simple and consistent.
 
-        if (analysisError) throw analysisError;
-      }
-
-      // Check if address settings exist
       const { data: existingAddress } = await supabase
         .from("farmer_address_table")
-        .select("*")
+        .select("farmer_address_id")
         .eq("farmer_account_id", user.id)
+        .limit(1)
         .single();
 
+      const addressPayload: any = {
+        farmer_account_id: user.id,
+        farmer_address_sitio: sitio,
+        farmer_address_barangay: barangay,
+        farmer_address_municipality: municipality,
+        farmer_address_province: province,
+        farmer_address_updated_at: new Date().toISOString(),
+      };
+
       if (existingAddress) {
-        // Update existing address
-        const { error: addressError } = await supabase
-          .from("farmer_address_table")
-          .update({
-            farmer_address_sitio: sitio,
-            farmer_address_barangay: barangay,
-            farmer_address_municipality: municipality,
-            farmer_address_province: province,
-          })
-          .eq("farmer_account_id", user.id);
-
-        if (addressError) throw addressError;
-      } else {
-        // Insert new address
-        const { error: addressError } = await supabase
-          .from("farmer_address_table")
-          .insert({
-            farmer_account_id: user.id,
-            farmer_address_sitio: sitio,
-            farmer_address_barangay: barangay,
-            farmer_address_municipality: municipality,
-            farmer_address_province: province,
-          });
-
-        if (addressError) throw addressError;
+        addressPayload.farmer_address_id = existingAddress.farmer_address_id;
       }
+
+      const { error: addressError } = await supabase
+        .from("farmer_address_table")
+        .upsert(addressPayload);
+
+      if (addressError) throw addressError;
 
       setAlertConfig({
         title: "Success",
@@ -230,13 +206,29 @@ export default function FarmSettings() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+    <View style={{ flex: 1, backgroundColor: "#2D6A4F" }}>
+      <StatusBar style="light" />
+      <ModernHeader
+        title="Farm Settings"
+        subtitle="Manage thresholds and location"
+        onBack={() => router.back()}
+        rightActions={
+          <TouchableOpacity
+            style={styles.headerActionButton}
+            onPress={handleSave}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <MaterialIcons name="save" size={24} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
+        }
+      />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={[
-          styles.container,
-          { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
-        ]}
+        style={[styles.container, { backgroundColor: "#F8FBF9" }]}
       >
         <ModernModal
           visible={alertVisible}
@@ -248,23 +240,6 @@ export default function FarmSettings() {
         />
 
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={styles.backButton}
-            >
-              <MaterialIcons name="close" size={24} color="#6C757D" />
-            </TouchableOpacity>
-            <Text style={styles.title}>Farm Settings</Text>
-            <TouchableOpacity onPress={handleSave} disabled={saving}>
-              {saving ? (
-                <ActivityIndicator size="small" color="#2D6A4F" />
-              ) : (
-                <Text style={styles.saveText}>Save</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
           <View style={styles.form}>
             <Text style={styles.sectionTitle}>
               Ripeness Analysis Thresholds
@@ -338,26 +313,19 @@ export default function FarmSettings() {
 
             <View style={styles.divider} />
 
-            <Text
-              style={[
-                styles.sectionTitle,
-                { color: isDark ? "#2D6A4F" : "#1B4332" },
-              ]}
-            >
+            <Text style={[styles.sectionTitle, { color: "#1B4332" }]}>
               Farm Location
             </Text>
 
-            <Text
-              style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
-            >
+            <Text style={[styles.label, { color: "#495057" }]}>
               Sitio / Street
             </Text>
             <TextInput
               style={[
                 styles.input,
                 {
-                  backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                  color: isDark ? "#FFFFFF" : "#000000",
+                  backgroundColor: "#FFFFFF",
+                  color: "#000000",
                 },
               ]}
               value={sitio}
@@ -366,17 +334,13 @@ export default function FarmSettings() {
               placeholderTextColor="#A0A0A0"
             />
 
-            <Text
-              style={[styles.label, { color: isDark ? "#A0A0A0" : "#495057" }]}
-            >
-              Barangay
-            </Text>
+            <Text style={[styles.label, { color: "#495057" }]}>Barangay</Text>
             <TextInput
               style={[
                 styles.input,
                 {
-                  backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                  color: isDark ? "#FFFFFF" : "#000000",
+                  backgroundColor: "#FFFFFF",
+                  color: "#000000",
                 },
               ]}
               value={barangay}
@@ -385,20 +349,15 @@ export default function FarmSettings() {
 
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.label,
-                    { color: isDark ? "#A0A0A0" : "#495057" },
-                  ]}
-                >
+                <Text style={[styles.label, { color: "#495057" }]}>
                   Municipality
                 </Text>
                 <TextInput
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                      color: isDark ? "#FFFFFF" : "#000000",
+                      backgroundColor: "#FFFFFF",
+                      color: "#000000",
                     },
                   ]}
                   value={municipality}
@@ -407,20 +366,15 @@ export default function FarmSettings() {
               </View>
               <View style={{ width: 16 }} />
               <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.label,
-                    { color: isDark ? "#A0A0A0" : "#495057" },
-                  ]}
-                >
+                <Text style={[styles.label, { color: "#495057" }]}>
                   Province
                 </Text>
                 <TextInput
                   style={[
                     styles.input,
                     {
-                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
-                      color: isDark ? "#FFFFFF" : "#000000",
+                      backgroundColor: "#FFFFFF",
+                      color: "#000000",
                     },
                   ]}
                   value={province}
@@ -431,7 +385,7 @@ export default function FarmSettings() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -531,5 +485,13 @@ const styles = StyleSheet.create({
     color: "#2D6A4F",
     textAlign: "center",
     marginTop: 4,
+  },
+  headerActionButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
