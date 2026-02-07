@@ -21,6 +21,7 @@ export default function SalesManagementScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [sales, setSales] = useState<any[]>([]);
   const [summary, setSummary] = useState({ totalRevenue: 0, totalItems: 0 });
+  const [farmInfo, setFarmInfo] = useState<any>(null);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -32,12 +33,14 @@ export default function SalesManagementScreen() {
         .single();
 
       if (profileData?.current_farm_group_id) {
-        // Only fetch if they are the owner
+        // Fetch farm info
         const { data: farmData } = await supabase
           .from("farm_group_table")
-          .select("farm_owner_id")
+          .select("*, farmer_account_table(*)")
           .eq("farm_group_id", profileData.current_farm_group_id)
           .single();
+
+        setFarmInfo(farmData);
 
         if (farmData?.farm_owner_id === user.id) {
           const { data: salesData, error } = await supabase.rpc(
@@ -64,6 +67,7 @@ export default function SalesManagementScreen() {
           setSales([]);
         }
       } else {
+        setFarmInfo(null);
         setSales([]);
       }
     } catch (error) {
@@ -129,7 +133,12 @@ export default function SalesManagementScreen() {
           >
             <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
           </TouchableOpacity>
-          <Text style={styles.title}>Sales Management</Text>
+          <View>
+            <Text style={styles.title}>Sales Management</Text>
+            {farmInfo && (
+              <Text style={styles.subtitle}>{farmInfo.farm_group_name}</Text>
+            )}
+          </View>
         </View>
 
         <View style={styles.summaryContainer}>
@@ -158,13 +167,24 @@ export default function SalesManagementScreen() {
             />
           }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <MaterialIcons name="shopping-cart" size={80} color="#D8F3DC" />
-              <Text style={styles.emptyTitle}>No Sales Yet</Text>
-              <Text style={styles.emptyDesc}>
-                Start selling your harvest to see your revenue tracking here.
-              </Text>
-            </View>
+            farmInfo ? (
+              <View style={styles.emptyContainer}>
+                <MaterialIcons name="shopping-cart" size={80} color="#D8F3DC" />
+                <Text style={styles.emptyTitle}>No Sales Yet</Text>
+                <Text style={styles.emptyDesc}>
+                  Start selling your harvest to see your revenue tracking here.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <MaterialIcons name="shopping-cart" size={80} color="#D8F3DC" />
+                <Text style={styles.emptyTitle}>No Active Farm</Text>
+                <Text style={styles.emptyDesc}>
+                  Please select a default farm in &quot;Farm Management&quot; to
+                  manage items.
+                </Text>
+              </View>
+            )
           }
         />
       </View>
@@ -190,6 +210,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   title: { fontSize: 24, fontWeight: "800", color: "#1B4332" },
+  subtitle: { fontSize: 13, color: "#52B788", fontWeight: "600" },
   summaryContainer: {
     flexDirection: "row",
     paddingHorizontal: 24,

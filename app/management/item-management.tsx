@@ -21,6 +21,7 @@ export default function ItemManagementScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [itemRequests, setItemRequests] = useState<any[]>([]);
+  const [farmInfo, setFarmInfo] = useState<any>(null);
 
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -57,6 +58,7 @@ export default function ItemManagementScreen() {
         .single();
 
       if (profileData?.current_farm_group_id) {
+        setFarmInfo(profileData.farm_group_table);
         // Only fetch if they are the owner of the current farm
         const { data: farmData } = await supabase
           .from("farm_group_table")
@@ -76,6 +78,7 @@ export default function ItemManagementScreen() {
           setItemRequests([]);
         }
       } else {
+        setFarmInfo(null);
         setItemRequests([]);
       }
     } catch (error) {
@@ -173,7 +176,12 @@ export default function ItemManagementScreen() {
           >
             <MaterialIcons name="arrow-back" size={24} color="#2D6A4F" />
           </TouchableOpacity>
-          <Text style={styles.title}>Item Management</Text>
+          <View>
+            <Text style={styles.title}>Item Management</Text>
+            {farmInfo && (
+              <Text style={styles.subtitle}>{farmInfo.farm_group_name}</Text>
+            )}
+          </View>
         </View>
 
         <FlatList
@@ -190,11 +198,29 @@ export default function ItemManagementScreen() {
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <MaterialIcons name="check-circle" size={80} color="#D8F3DC" />
-              <Text style={styles.emptyTitle}>No Pending Requests</Text>
-              <Text style={styles.emptyDesc}>
-                All deletion requests have been handled.
-              </Text>
+              {!farmInfo ? (
+                <>
+                  <MaterialIcons name="warning" size={80} color="#FFD7D7" />
+                  <Text style={styles.emptyTitle}>No Active Farm</Text>
+                  <Text style={styles.emptyDesc}>
+                    Please select a default farm in &quot;Farm Management&quot;
+                    to manage items.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <MaterialIcons
+                    name="check-circle"
+                    size={80}
+                    color="#D8F3DC"
+                  />
+                  <Text style={styles.emptyTitle}>No Pending Requests</Text>
+                  <Text style={styles.emptyDesc}>
+                    All deletion requests for {farmInfo.farm_group_name} have
+                    been handled.
+                  </Text>
+                </>
+              )}
             </View>
           }
         />
@@ -231,6 +257,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   title: { fontSize: 24, fontWeight: "800", color: "#1B4332" },
+  subtitle: { fontSize: 13, color: "#52B788", fontWeight: "600" },
   listContent: { padding: 24 },
   requestCard: {
     backgroundColor: "#FFF",

@@ -8,6 +8,7 @@ import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +30,7 @@ export default function ProfileScreen() {
   const [isOwner, setIsOwner] = useState(false);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [signOutVisible, setSignOutVisible] = useState(false);
   const router = useRouter();
@@ -69,6 +71,7 @@ export default function ProfileScreen() {
       console.error("Error fetching profile/analytics:", error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [user]);
 
@@ -137,6 +140,16 @@ export default function ProfileScreen() {
         styles.container,
         { backgroundColor: isDark ? "#121212" : "#F8FBF9" },
       ]}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            fetchData();
+          }}
+          colors={["#2D6A4F"]}
+        />
+      }
     >
       <ModernModal
         visible={signOutVisible}
@@ -175,6 +188,23 @@ export default function ProfileScreen() {
               {profile?.farmer_account_last_name}
             </Text>
             <Text style={styles.email}>{profile?.farmer_account_email}</Text>
+            {profile?.farm_group_table ? (
+              <View style={styles.activeFarmBadge}>
+                <MaterialIcons name="agriculture" size={12} color="#D8F3DC" />
+                <Text style={styles.activeFarmText}>
+                  {profile.farm_group_table.farm_group_name}
+                </Text>
+              </View>
+            ) : (
+              <View
+                style={[styles.activeFarmBadge, { backgroundColor: "#D90429" }]}
+              >
+                <MaterialIcons name="warning" size={12} color="#FFF" />
+                <Text style={[styles.activeFarmText, { color: "#FFF" }]}>
+                  No Active Farm
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -186,7 +216,9 @@ export default function ProfileScreen() {
             { color: isDark ? "#FFFFFF" : "#1B4332" },
           ]}
         >
-          Harvest Analytics
+          {profile?.farm_group_table
+            ? `${profile.farm_group_table.farm_group_name} Analytics`
+            : "Harvest Analytics"}
         </Text>
 
         <View style={styles.analyticsGrid}>
@@ -337,6 +369,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#D8F3DC",
     marginTop: 2,
+    opacity: 0.9,
+  },
+  activeFarmBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 8,
+    alignSelf: "flex-start",
+    gap: 4,
+  },
+  activeFarmText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#D8F3DC",
+    textTransform: "uppercase",
   },
   content: {
     padding: 24,

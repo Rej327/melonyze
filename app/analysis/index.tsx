@@ -397,7 +397,18 @@ export default function SoundAnalysisScreen() {
 
                   <TouchableOpacity
                     style={styles.skipButton}
-                    onPress={() => router.push("/management/add-edit" as any)}
+                    onPress={() => {
+                      if (!currentGroupId) {
+                        setAlertConfig({
+                          title: "Farm Required",
+                          message:
+                            "You must join or create a farm group before adding items to inventory. You can still use the analyzer to test ripeness.",
+                        });
+                        setAlertVisible(true);
+                        return;
+                      }
+                      router.push("/management/add-edit" as any);
+                    }}
                   >
                     <Text style={styles.skipButtonText}>
                       Skip to Manual Input
@@ -478,6 +489,15 @@ export default function SoundAnalysisScreen() {
                     <TouchableOpacity
                       style={styles.recordResultButton}
                       onPress={() => {
+                        if (!currentGroupId) {
+                          setAlertConfig({
+                            title: "Cannot Save Result",
+                            message:
+                              "You must join or create a farm group to save analysis results to inventory. Please visit Farm Management to set up your farm.",
+                          });
+                          setAlertVisible(true);
+                          return;
+                        }
                         const statusValue =
                           result?.status === "READY" ? "Ripe" : "Unripe";
                         const query = `analysis_freq=${result?.frequency}&analysis_status=${statusValue}&analysis_amplitude=${result?.amplitude}&analysis_decay=${result?.decayTime}&analysis_confidence=${result?.confidence}`;
@@ -513,22 +533,8 @@ export default function SoundAnalysisScreen() {
       {step === 1 && (
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[
-              styles.recordButton,
-              !currentGroupId && { backgroundColor: "#A0A0A0" },
-            ]}
-            onPress={() => {
-              if (!currentGroupId) {
-                setAlertConfig({
-                  title: "Farm Required",
-                  message:
-                    "You must join or create a farm group to perform and save analysis results.",
-                });
-                setAlertVisible(true);
-                return;
-              }
-              startRecording();
-            }}
+            style={styles.recordButton}
+            onPress={startRecording}
             disabled={isRecording}
           >
             <Text style={styles.recordButtonText}>
@@ -537,6 +543,12 @@ export default function SoundAnalysisScreen() {
                 : "Start Acoustic Scan"}
             </Text>
           </TouchableOpacity>
+          {!currentGroupId && (
+            <Text style={styles.footerWarning}>
+              <MaterialIcons name="info" size={14} color="#D97706" /> You can
+              test ripeness, but must join a farm to save results.
+            </Text>
+          )}
         </View>
       )}
     </SafeAreaView>
@@ -701,5 +713,12 @@ const styles = StyleSheet.create({
     color: "#6C757D",
     textAlign: "center",
     lineHeight: 22,
+  },
+  footerWarning: {
+    fontSize: 12,
+    color: "#D97706",
+    textAlign: "center",
+    marginTop: 12,
+    fontWeight: "600",
   },
 });
