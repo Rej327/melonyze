@@ -26,6 +26,7 @@ export default function ProfileScreen() {
   const [profile, setProfile] = useState<any>(null);
 
   const [analytics, setAnalytics] = useState<FarmerAnalytics | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -39,23 +40,31 @@ export default function ProfileScreen() {
       // Fetch profile
       const { data: profileData, error: profileError } = await supabase
         .from("farmer_account_table")
-        .select("*")
+        .select("*, farm_group_table(*)") // Fetch farm_group_table data
         .eq("farmer_account_id", user.id)
         .single();
 
       if (profileError) throw profileError;
       setProfile(profileData);
 
-      // Fetch analytics
-      const { data: analyticsData, error: analyticsError } = await supabase.rpc(
-        "get_farmer_analytics",
-        {
-          p_farmer_id: user.id,
-        },
-      );
-
-      if (analyticsError) throw analyticsError;
-      setAnalytics(analyticsData[0]);
+      // Fetch analytics (prefer group-based if in a group)
+      if (profileData?.current_farm_group_id) {
+        setIsOwner(profileData.farm_group_table?.farm_owner_id === user.id);
+        const { data: analyticsData, error: analyticsError } =
+          await supabase.rpc("get_group_analytics", {
+            p_group_id: profileData.current_farm_group_id,
+          });
+        if (analyticsError) throw analyticsError;
+        setAnalytics(analyticsData[0]);
+      } else {
+        setIsOwner(false);
+        // No group, no analytics
+        setAnalytics({
+          total_items: 0,
+          ready_items: 0,
+          avg_sweetness: 0,
+        } as any);
+      }
     } catch (error) {
       console.error("Error fetching profile/analytics:", error);
     } finally {
@@ -205,6 +214,47 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.menuSection}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => router.push("/management/farm-group" as any)}
+          >
+            <View style={styles.menuMain}>
+              <MaterialIcons name="group" size={20} color="#2D6A4F" />
+              <Text style={styles.menuText}>Farm Management</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={20} color="#A0A0A0" />
+          </TouchableOpacity>
+
+          {isOwner && (
+            <>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() =>
+                  router.push("/management/item-management" as any)
+                }
+              >
+                <View style={styles.menuMain}>
+                  <MaterialIcons name="assignment" size={20} color="#2D6A4F" />
+                  <Text style={styles.menuText}>Item Management</Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#A0A0A0" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() =>
+                  router.push("/management/sales-management" as any)
+                }
+              >
+                <View style={styles.menuMain}>
+                  <MaterialIcons name="payments" size={20} color="#2D6A4F" />
+                  <Text style={styles.menuText}>Sales Management</Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#A0A0A0" />
+              </TouchableOpacity>
+            </>
+          )}
+
           <TouchableOpacity
             style={styles.menuItem}
             onPress={() => router.push("/management/settings" as any)}

@@ -41,6 +41,7 @@ export default function SoundAnalysisScreen() {
   const startTimeRef = useRef<number>(0);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const meteringDataRef = useRef<number[]>([]);
+  const [currentGroupId, setCurrentGroupId] = useState<string | null>(null);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -55,6 +56,16 @@ export default function SoundAnalysisScreen() {
     const fetchSettings = async () => {
       if (!user) return;
       try {
+        const { data: profile } = await supabase
+          .from("farmer_account_table")
+          .select("current_farm_group_id")
+          .eq("farmer_account_id", user.id)
+          .single();
+
+        if (profile?.current_farm_group_id) {
+          setCurrentGroupId(profile.current_farm_group_id);
+        }
+
         const { data, error } = await supabase
           .from("watermelon_analysis_settings_table")
           .select("*")
@@ -502,8 +513,22 @@ export default function SoundAnalysisScreen() {
       {step === 1 && (
         <View style={styles.footer}>
           <TouchableOpacity
-            style={styles.recordButton}
-            onPress={startRecording}
+            style={[
+              styles.recordButton,
+              !currentGroupId && { backgroundColor: "#A0A0A0" },
+            ]}
+            onPress={() => {
+              if (!currentGroupId) {
+                setAlertConfig({
+                  title: "Farm Required",
+                  message:
+                    "You must join or create a farm group to perform and save analysis results.",
+                });
+                setAlertVisible(true);
+                return;
+              }
+              startRecording();
+            }}
             disabled={isRecording}
           >
             <Text style={styles.recordButtonText}>

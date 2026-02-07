@@ -1,4 +1,5 @@
 import { ModernModal } from "@/components/ui/modern-modal";
+import { useAuth } from "@/context/auth";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -9,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -19,7 +21,7 @@ interface WatermelonDetail {
   watermelon_item_label: string;
   watermelon_item_variety: string;
   watermelon_item_description: string;
-  watermelon_item_harvest_status: "READY" | "NOT_READY";
+  watermelon_item_harvest_status: "READY" | "NOT_READY" | "SOLD";
   watermelon_item_image_url: string;
   watermelon_item_created_at: string;
   last_analysis?: {
@@ -28,14 +30,21 @@ interface WatermelonDetail {
     result: string;
   };
   last_sweetness?: number;
+  farm_group_table?: {
+    farm_owner_id: string;
+  };
+  farm_group_id?: string; // Added for sale function
 }
 
 export default function WatermelonDetails() {
   const { id } = useLocalSearchParams();
+  const { user } = useAuth();
   const [watermelon, setWatermelon] = useState<WatermelonDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [errorVisible, setErrorVisible] = useState(false);
+  const [isSaleModalVisible, setIsSaleModalVisible] = useState(false);
+  const [saleAmount, setSaleAmount] = useState("");
   const router = useRouter();
   const isDark = false;
 
@@ -43,7 +52,7 @@ export default function WatermelonDetails() {
     try {
       const { data, error } = await supabase
         .from("watermelon_item_table")
-        .select("*")
+        .select("*, farm_group_table(farm_owner_id, farm_group_id)") // Fetch farm_group_id
         .eq("watermelon_item_id", id)
         .single();
 
@@ -77,6 +86,7 @@ export default function WatermelonDetails() {
             }
           : undefined,
         last_sweetness: sweetnessData?.watermelon_sweetness_record_score,
+        farm_group_id: data.farm_group_table?.farm_group_id, // Assign farm_group_id
       });
     } catch (error) {
       console.error("Error fetching details:", error);
@@ -91,19 +101,80 @@ export default function WatermelonDetails() {
   }, [fetchDetails]);
 
   const handleDelete = () => {
+    const isOwner = watermelon?.farm_group_table?.farm_owner_id === user?.id;
+    setDeleteConfig({
+      title: isOwner ? "Confirm Delete" : "Request Delete",
+      message: isOwner
+        ? "Are you sure you want to delete this watermelon record?"
+        : "You are not the owner. Requesting deletion will notify the owner for approval. Continue?",
+      isOwner,
+    });
     setDeleteVisible(true);
   };
 
-  const confirmDelete = async () => {
-    const { error } = await supabase
-      .from("watermelon_item_table")
-      .delete()
-      .eq("watermelon_item_id", id);
+  const [deleteConfig, setDeleteConfig] = useState({
+    title: "Delete Entry",
+    message: "Are you sure you want to delete this watermelon record?",
+    isOwner: false,
+  });
 
-    if (error) {
+  const confirmDelete = async () => {
+    setLoading(true);
+    try {
+      if (deleteConfig.isOwner) {
+        const { error } = await supabase.rpc("bulk_delete_watermelons", {
+          p_executing_user_id: user?.id,
+          p_item_ids: [id],
+        });
+        if (error) throw error;
+        router.replace("/(tabs)");
+      } else {
+        const { error } = await supabase.rpc(
+          "request_bulk_delete_watermelons",
+          {
+            p_farmer_id: user?.id,
+            p_item_ids: [id],
+          },
+        );
+        if (error) throw error;
+        setDeleteVisible(false);
+        fetchDetails();
+      }
+    } catch (error: any) {
       console.error(error);
-    } else {
-      router.replace("/(tabs)");
+      alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSale = () => {
+    setSaleAmount("");
+    setIsSaleModalVisible(true);
+  };
+
+  const confirmSale = async () => {
+    if (!saleAmount || isNaN(Number(saleAmount))) {
+      alert("Please enter a valid amount");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.rpc("record_watermelon_sale", {
+        p_executing_user_id: user?.id,
+        p_farm_group_id: watermelon?.farm_group_id,
+        p_item_ids: [id],
+        p_total_amount: Number(saleAmount),
+      });
+
+      if (error) throw error;
+      setIsSaleModalVisible(false);
+      fetchDetails();
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -141,12 +212,43 @@ export default function WatermelonDetails() {
         <ModernModal
           visible={deleteVisible}
           onClose={() => setDeleteVisible(false)}
-          title="Delete Entry"
-          message="Are you sure you want to delete this watermelon record? This action cannot be undone."
-          type="error"
-          confirmText="Delete"
+          title={deleteConfig.title}
+          message={deleteConfig.message}
+          type={deleteConfig.isOwner ? "error" : "info"}
+          confirmText={deleteConfig.isOwner ? "Delete" : "Request"}
           onConfirm={confirmDelete}
         />
+
+        <ModernModal
+          visible={isSaleModalVisible}
+          onClose={() => setIsSaleModalVisible(false)}
+          title="Record Sale"
+          message={`Confirming sale for ${watermelon.watermelon_item_label}.`}
+          type="info"
+          confirmText="Complete Sale"
+          onConfirm={confirmSale}
+        >
+          <View style={{ marginTop: 16 }}>
+            <Text style={styles.statTitle}>SALE PRICE (₱)</Text>
+            <TextInput
+              style={{
+                backgroundColor: "#F8FBF9",
+                borderRadius: 12,
+                padding: 12,
+                fontSize: 18,
+                fontWeight: "700",
+                marginTop: 8,
+                borderWidth: 1,
+                borderColor: "#D8F3DC",
+              }}
+              placeholder="e.g. 50"
+              keyboardType="numeric"
+              value={saleAmount}
+              onChangeText={setSaleAmount}
+              autoFocus
+            />
+          </View>
+        </ModernModal>
 
         <ScrollView>
           <View style={styles.header}>
@@ -194,7 +296,9 @@ export default function WatermelonDetails() {
                       backgroundColor:
                         watermelon.watermelon_item_harvest_status === "READY"
                           ? "#2D6A4F"
-                          : "#D90429",
+                          : watermelon.watermelon_item_harvest_status === "SOLD"
+                            ? "#DDB892"
+                            : "#D90429",
                     },
                   ]}
                 />
@@ -227,35 +331,48 @@ export default function WatermelonDetails() {
                 </View>
                 <View style={styles.statBox}>
                   <MaterialIcons
-                    name="check-circle"
+                    name={
+                      watermelon.watermelon_item_harvest_status === "SOLD"
+                        ? "monetization-on"
+                        : "check-circle"
+                    }
                     size={24}
                     color={
-                      watermelon.watermelon_item_harvest_status === "READY"
-                        ? "#2D6A4F"
-                        : "#D90429"
+                      watermelon.watermelon_item_harvest_status === "SOLD"
+                        ? "#DDB892"
+                        : watermelon.watermelon_item_harvest_status === "READY"
+                          ? "#2D6A4F"
+                          : "#D90429"
                     }
                     style={{ marginBottom: 8 }}
                   />
-                  <Text style={styles.statTitle}>RIPENESS</Text>
+                  <Text style={styles.statTitle}>STATUS</Text>
                   <Text
                     style={[
                       styles.statValue,
                       {
                         color:
-                          watermelon.watermelon_item_harvest_status === "READY"
-                            ? "#2D6A4F"
-                            : "#D90429",
+                          watermelon.watermelon_item_harvest_status === "SOLD"
+                            ? "#B08968"
+                            : watermelon.watermelon_item_harvest_status ===
+                                "READY"
+                              ? "#2D6A4F"
+                              : "#D90429",
                       },
                     ]}
                   >
-                    {watermelon.watermelon_item_harvest_status === "READY"
-                      ? "Ripe"
-                      : "Unripe"}
+                    {watermelon.watermelon_item_harvest_status === "SOLD"
+                      ? "Sold"
+                      : watermelon.watermelon_item_harvest_status === "READY"
+                        ? "Ripe"
+                        : "Unripe"}
                   </Text>
                   <Text style={styles.statDesc}>
-                    {watermelon.watermelon_item_harvest_status === "READY"
-                      ? "Ready to Ship"
-                      : "Needs more time"}
+                    {watermelon.watermelon_item_harvest_status === "SOLD"
+                      ? "Transaction Recorded"
+                      : watermelon.watermelon_item_harvest_status === "READY"
+                        ? "Ready to Ship"
+                        : "Needs more time"}
                   </Text>
                 </View>
               </View>
@@ -295,6 +412,19 @@ export default function WatermelonDetails() {
               >
                 <Text style={styles.editButtonText}>Edit Details</Text>
               </TouchableOpacity>
+
+              {watermelon.watermelon_item_harvest_status !== "SOLD" &&
+                watermelon.farm_group_table?.farm_owner_id === user?.id && (
+                  <TouchableOpacity
+                    style={[
+                      styles.editButton,
+                      { backgroundColor: "#DDB892", marginTop: 12 },
+                    ]}
+                    onPress={handleSale}
+                  >
+                    <Text style={styles.editButtonText}>Mark as Sold</Text>
+                  </TouchableOpacity>
+                )}
 
               <TouchableOpacity
                 style={styles.deleteButton}

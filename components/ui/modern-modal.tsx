@@ -6,7 +6,8 @@ interface ModernModalProps {
   visible: boolean;
   onClose: () => void;
   title: string;
-  message: string;
+  message?: string;
+  children?: React.ReactNode;
   type?: "info" | "error" | "success" | "warning";
   confirmText?: string;
   onConfirm?: () => void;
@@ -17,6 +18,7 @@ export function ModernModal({
   onClose,
   title,
   message,
+  children,
   type = "info",
   confirmText = "OK",
   onConfirm,
@@ -66,7 +68,7 @@ export function ModernModal({
           </View>
 
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.message}>{message}</Text>
+          {children ? children : <Text style={styles.message}>{message}</Text>}
 
           <View style={styles.footer}>
             <TouchableOpacity

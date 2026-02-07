@@ -68,6 +68,40 @@ export default function AddEditWatermelon() {
     type: "info" as any,
   });
   const [imgSourceModalVisible, setImgSourceModalVisible] = useState(false);
+  const [currentGroupId, setCurrentGroupId] = useState<string | null>(null);
+  const [myFarms, setMyFarms] = useState<any[]>([]);
+
+  const fetchFarms = useCallback(async () => {
+    if (!user) return;
+    try {
+      const { data: memberships } = await supabase
+        .from("farm_membership_table")
+        .select("*, farm_group_table(*)")
+        .eq("farmer_account_id", user.id)
+        .eq("farm_membership_status", "ACCEPTED");
+
+      const farms = memberships?.map((m) => m.farm_group_table) || [];
+      setMyFarms(farms);
+
+      const { data: profile } = await supabase
+        .from("farmer_account_table")
+        .select("current_farm_group_id")
+        .eq("farmer_account_id", user.id)
+        .single();
+
+      if (profile?.current_farm_group_id) {
+        setCurrentGroupId(profile.current_farm_group_id);
+      } else if (farms.length > 0) {
+        setCurrentGroupId(farms[0].farm_group_id);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchFarms();
+  }, [fetchFarms]);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -189,12 +223,24 @@ export default function AddEditWatermelon() {
       return;
     }
 
+    if (!currentGroupId) {
+      setAlertConfig({
+        title: "Farm Required",
+        message:
+          "You must be a member of a farm group to add or edit items. Please join or create a farm group first.",
+        type: "warning",
+      });
+      setAlertVisible(true);
+      return;
+    }
+
     setLoading(true);
     try {
       let imageUrl = image;
 
       const itemData = {
         farmer_account_id: user?.id,
+        farm_group_id: currentGroupId,
         watermelon_item_label: label,
         watermelon_item_variety: variety,
         watermelon_item_description: `[Batch: ${batch}]\n${description}`,
@@ -427,7 +473,46 @@ export default function AddEditWatermelon() {
           </TouchableOpacity>
 
           <View style={styles.form}>
-            <Text style={styles.label}>Label / QR ID</Text>
+            <Text style={styles.label}>Target Farm Location</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 16, marginTop: 8 }}
+            >
+              {myFarms.map((f) => (
+                <TouchableOpacity
+                  key={f.farm_group_id}
+                  style={[
+                    styles.farmBadge,
+                    currentGroupId === f.farm_group_id &&
+                      styles.farmBadgeActive,
+                  ]}
+                  onPress={() => setCurrentGroupId(f.farm_group_id)}
+                >
+                  <Text
+                    style={[
+                      styles.farmBadgeText,
+                      currentGroupId === f.farm_group_id &&
+                        styles.farmBadgeTextActive,
+                    ]}
+                  >
+                    {f.farm_group_name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {myFarms.length === 0 && (
+                <TouchableOpacity
+                  style={styles.noFarmBadge}
+                  onPress={() => router.push("/management/farm-group")}
+                >
+                  <Text style={styles.noFarmBadgeText}>
+                    Join/Create a Farm First
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+
+            <Text style={styles.label}>Label / Tracking ID</Text>
             <TextInput
               style={styles.input}
               value={label}
@@ -703,4 +788,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   recordButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  farmBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "#FFF",
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  farmBadgeActive: {
+    backgroundColor: "#2D6A4F",
+    borderColor: "#2D6A4F",
+  },
+  farmBadgeText: { color: "#495057", fontWeight: "600" },
+  farmBadgeTextActive: { color: "#FFF" },
+  noFarmBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "#FFF0F3",
+    borderWidth: 1,
+    borderColor: "#FFB3C1",
+    borderStyle: "dashed",
+  },
+  noFarmBadgeText: { color: "#D90429", fontWeight: "600" },
 });
