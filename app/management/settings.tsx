@@ -35,15 +35,15 @@ export default function FarmSettings() {
 
   // Analysis Settings
   const [freqMin, setFreqMin] = useState(60);
-  const [freqMax, setFreqMax] = useState(200);
-  const [ampMin, setAmpMin] = useState(0.25);
-  const [decayThreshold, setDecayThreshold] = useState(1200); // milliseconds
+  const [freqMax, setFreqMax] = useState(180);
+  const [ampMin, setAmpMin] = useState(0.1);
+  const [decayThreshold, setDecayThreshold] = useState(120); // milliseconds
 
   // Local state for text inputs to allow smooth editing
   const [freqMinInput, setFreqMinInput] = useState("60.0");
-  const [freqMaxInput, setFreqMaxInput] = useState("200.0");
-  const [ampMinInput, setAmpMinInput] = useState("0.25");
-  const [decayInput, setDecayInput] = useState("1200");
+  const [freqMaxInput, setFreqMaxInput] = useState("180.0");
+  const [ampMinInput, setAmpMinInput] = useState("0.10");
+  const [decayInput, setDecayInput] = useState("120");
 
   // Farm Address Settings
   const [sitio, setSitio] = useState("");
@@ -214,6 +214,25 @@ export default function FarmSettings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleResetDefaults = () => {
+    setFreqMin(60);
+    setFreqMinInput("60.0");
+    setFreqMax(180);
+    setFreqMaxInput("180.0");
+    setAmpMin(0.1);
+    setAmpMinInput("0.10");
+    setDecayThreshold(120);
+    setDecayInput("120");
+
+    setAlertConfig({
+      title: "Reset Complete",
+      message: "Please tap Save to persist these default settings.",
+      type: "info",
+      onConfirm: undefined,
+    });
+    setAlertVisible(true);
   };
 
   if (loading) {
@@ -403,6 +422,16 @@ export default function FarmSettings() {
                 <Text style={styles.valueUnit}>ms</Text>
               </View>
             </View>
+
+            <TouchableOpacity
+              style={styles.resetButton}
+              onPress={handleResetDefaults}
+            >
+              <MaterialIcons name="restore" size={20} color="#2D6A4F" />
+              <Text style={styles.resetButtonText}>
+                Reset to Recommended Defaults
+              </Text>
+            </TouchableOpacity>
 
             <View style={styles.divider} />
 
@@ -611,5 +640,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#6C757D",
+  },
+  resetButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#A3DEC9", // Light green border
+    borderRadius: 12,
+    backgroundColor: "rgba(45, 106, 79, 0.05)",
+    gap: 8,
+  },
+  resetButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#2D6A4F",
   },
 });

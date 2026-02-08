@@ -10,6 +10,6 @@ ADD COLUMN IF NOT EXISTS watermelon_analysis_settings_ready_decay_threshold NUME
 -- Update defaults for existing columns to match recommended research values
 ALTER TABLE watermelon_analysis_settings_table
 ALTER COLUMN watermelon_analysis_settings_ready_frequency_min SET DEFAULT 60,
-ALTER COLUMN watermelon_analysis_settings_ready_frequency_max SET DEFAULT 200,
-ALTER COLUMN watermelon_analysis_settings_ready_amplitude_min SET DEFAULT 0.25,
-ALTER COLUMN watermelon_analysis_settings_ready_decay_threshold SET DEFAULT 1200;
+ALTER COLUMN watermelon_analysis_settings_ready_frequency_max SET DEFAULT 180,
+ALTER COLUMN watermelon_analysis_settings_ready_amplitude_min SET DEFAULT 0.10,
+ALTER COLUMN watermelon_analysis_settings_ready_decay_threshold SET DEFAULT 120;
