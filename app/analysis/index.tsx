@@ -32,9 +32,10 @@ export default function SoundAnalysisScreen() {
   const [alertConfig, setAlertConfig] = useState({ title: "", message: "" });
 
   // Analysis settings from database
-  const [freqMin, setFreqMin] = useState(100);
+  const [freqMin, setFreqMin] = useState(60);
   const [freqMax, setFreqMax] = useState(200);
-  const [decayThreshold, setDecayThreshold] = useState(120);
+  const [ampMin, setAmpMin] = useState(0.25);
+  const [decayThreshold, setDecayThreshold] = useState(1200); // milliseconds
 
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -74,6 +75,9 @@ export default function SoundAnalysisScreen() {
         if (data && !error) {
           setFreqMin(data.watermelon_analysis_settings_ready_frequency_min);
           setFreqMax(data.watermelon_analysis_settings_ready_frequency_max);
+          setAmpMin(
+            data.watermelon_analysis_settings_ready_amplitude_min || 0.25,
+          );
           if (data.watermelon_analysis_settings_ready_decay_threshold) {
             setDecayThreshold(
               data.watermelon_analysis_settings_ready_decay_threshold,
@@ -116,28 +120,37 @@ export default function SoundAnalysisScreen() {
         // Attempt to parse raw WAV
         const rawSamples = await parseWav(uri);
         if (rawSamples && rawSamples.length > 0) {
+          console.log("Using FFT-based analysis, samples:", rawSamples.length);
           dspResult = analyzeAudioBuffer(rawSamples, {
             freqMin,
             freqMax,
             decayThreshold,
+            minAmplitude: ampMin,
           });
         } else {
           // Fallback if parsing failed
           console.warn("WAV parsing failed, falling back to metering");
+          console.log("Metering data points:", meteringDataRef.current.length);
           dspResult = analyzeMetering(meteringDataRef.current, {
             freqMin,
             freqMax,
             decayThreshold,
+            minAmplitude: ampMin,
           });
         }
       } else {
         // Android/Other fallback
+        console.log("Android: Using metering-based analysis");
+        console.log("Metering data points:", meteringDataRef.current.length);
         dspResult = analyzeMetering(meteringDataRef.current, {
           freqMin,
           freqMax,
           decayThreshold,
+          minAmplitude: ampMin,
         });
       }
+
+      console.log("Analysis result:", dspResult);
 
       setResult({
         frequency: dspResult.frequency.toFixed(1),
@@ -160,7 +173,7 @@ export default function SoundAnalysisScreen() {
     } finally {
       setLoading(false);
     }
-  }, [freqMin, freqMax, decayThreshold]);
+  }, [freqMin, freqMax, decayThreshold, ampMin]);
 
   const startRecording = async () => {
     try {
@@ -200,9 +213,27 @@ export default function SoundAnalysisScreen() {
       const { recording } = await Audio.Recording.createAsync(
         recordingOptions,
         (status) => {
-          // Progress update handled in interval for consistency with UI 3s timer
+          if (status.isRecording && status.metering !== undefined) {
+            meteringDataRef.current.push(status.metering);
+            setDbLevel(status.metering);
+
+            // Update visual bars (decimated for UI performance)
+            const normalizedLevel = Math.max(
+              0,
+              Math.min(1, (status.metering + 160) / 160),
+            );
+            // Only update UI every ~5th frame to avoid lag
+            if (meteringDataRef.current.length % 5 === 0) {
+              setBars((curr) => {
+                const newBars = [...curr];
+                newBars.shift();
+                newBars.push(normalizedLevel);
+                return newBars;
+              });
+            }
+          }
         },
-        50, // Progress update interval
+        20, // High-frequency polling (20ms) for better decay resolution
       );
 
       recordingRef.current = recording;
@@ -212,40 +243,16 @@ export default function SoundAnalysisScreen() {
       setProgress(0);
       startTimeRef.current = Date.now();
 
-      recordingIntervalRef.current = setInterval(async () => {
+      const intervalId = setInterval(async () => {
         const elapsed = Date.now() - startTimeRef.current;
         const p = Math.min(1, elapsed / 3000);
         setProgress(p);
 
-        // Get real metering data for UI and Fallback
-        if (recordingRef.current) {
-          try {
-            const status = await recordingRef.current.getStatusAsync();
-            if (status.isRecording && status.metering !== undefined) {
-              const metering = status.metering;
-              meteringDataRef.current.push(metering);
-              setDbLevel(metering);
-
-              const normalizedLevel = Math.max(
-                0,
-                Math.min(1, (metering + 160) / 160),
-              );
-              setBars((curr) => {
-                const newBars = [...curr];
-                newBars.shift();
-                newBars.push(normalizedLevel);
-                return newBars;
-              });
-            }
-          } catch {
-            // ignore
-          }
-        }
-
         if (p >= 1) {
           stopRecording();
         }
-      }, 50) as any; // Fast polling for better metering resolution
+      }, 50);
+      recordingIntervalRef.current = intervalId as any;
     } catch (err) {
       console.error("Recording error:", err);
       setAlertConfig({
@@ -365,6 +372,34 @@ export default function SoundAnalysisScreen() {
                     </View>
                   </View>
 
+                  {/* <View style={[styles.card, { backgroundColor: "#FFF9E6" }]}>
+                    <View style={{ flexDirection: "row", gap: 12 }}>
+                      <MaterialIcons name="science" size={20} color="#D97706" />
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[
+                            styles.cardTitle,
+                            { color: "#92400E", marginBottom: 8 },
+                          ]}
+                        >
+                          Research-Based Analysis
+                        </Text>
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            color: "#78350F",
+                            lineHeight: 18,
+                          }}
+                        >
+                          This analyzer measures natural frequency and
+                          reverberation time - the same acoustic properties that
+                          achieve 71% accuracy in predicting watermelon ripeness
+                          (Reinhart, 2015).
+                        </Text>
+                      </View>
+                    </View>
+                  </View> */}
+
                   <View
                     style={[
                       styles.alertCard,
@@ -465,9 +500,9 @@ export default function SoundAnalysisScreen() {
                       </Text>
                     </View>
                     <View style={styles.statItem}>
-                      <Text style={styles.statLabel}>Decay Time</Text>
+                      <Text style={styles.statLabel}>Reverberation Time</Text>
                       <Text style={styles.statValue}>
-                        {result?.decayTime} ms
+                        {parseFloat(result?.decayTime).toFixed(0)} ms
                       </Text>
                     </View>
                     <View style={styles.statItem}>
@@ -480,8 +515,8 @@ export default function SoundAnalysisScreen() {
 
                   <Text style={styles.resultAdvice}>
                     {result?.status === "READY"
-                      ? "Deep resonance detected with slow decay. High ripeness probability."
-                      : "Sound decays too quickly or frequency is off. Likely unripe or hollow."}
+                      ? "Deep resonance detected with long reverberation time (>120ms). High ripeness probability based on acoustic analysis."
+                      : "Reverberation time too short or frequency out of range. Likely unripe - needs more time to develop."}
                   </Text>
 
                   <View style={{ gap: 12, width: "100%", marginTop: 32 }}>
@@ -580,7 +615,7 @@ const styles = StyleSheet.create({
   progressDots: { flexDirection: "row", gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#E0E0E0" },
   activeDot: { width: 24, backgroundColor: "#2D6A4F" },
-  content: { padding: 24 },
+  content: { padding: 24, paddingBottom: 120 },
   mainTitle: {
     fontSize: 28,
     fontWeight: "800",

@@ -34,10 +34,16 @@ export default function FarmSettings() {
   const router = useRouter();
 
   // Analysis Settings
-  const [freqMin, setFreqMin] = useState(100);
+  const [freqMin, setFreqMin] = useState(60);
   const [freqMax, setFreqMax] = useState(200);
-  const [ampMin, setAmpMin] = useState(0.5);
-  const [decayThreshold, setDecayThreshold] = useState(120);
+  const [ampMin, setAmpMin] = useState(0.25);
+  const [decayThreshold, setDecayThreshold] = useState(1200); // milliseconds
+
+  // Local state for text inputs to allow smooth editing
+  const [freqMinInput, setFreqMinInput] = useState("60.0");
+  const [freqMaxInput, setFreqMaxInput] = useState("200.0");
+  const [ampMinInput, setAmpMinInput] = useState("0.25");
+  const [decayInput, setDecayInput] = useState("1200");
 
   // Farm Address Settings
   const [sitio, setSitio] = useState("");
@@ -66,20 +72,29 @@ export default function FarmSettings() {
       }
 
       if (analysisData) {
-        setFreqMin(
-          analysisData.watermelon_analysis_settings_ready_frequency_min,
-        );
-        setFreqMax(
-          analysisData.watermelon_analysis_settings_ready_frequency_max,
-        );
-        setAmpMin(
-          analysisData.watermelon_analysis_settings_ready_amplitude_min,
-        );
+        const fMin =
+          analysisData.watermelon_analysis_settings_ready_frequency_min;
+        setFreqMin(fMin);
+        setFreqMinInput(fMin.toFixed(1));
+
+        const fMax =
+          analysisData.watermelon_analysis_settings_ready_frequency_max;
+        setFreqMax(fMax);
+        setFreqMaxInput(fMax.toFixed(1));
+
+        const aMin =
+          analysisData.watermelon_analysis_settings_ready_amplitude_min;
+        setAmpMin(aMin);
+        setAmpMinInput(aMin.toFixed(2));
+
+        let dThresh = 120;
         if (analysisData.watermelon_analysis_settings_ready_decay_threshold) {
-          setDecayThreshold(
-            analysisData.watermelon_analysis_settings_ready_decay_threshold,
-          );
+          dThresh =
+            analysisData.watermelon_analysis_settings_ready_decay_threshold;
         }
+        setDecayThreshold(dThresh);
+        setDecayInput(dThresh.toFixed(0));
+
         setAnalysisSettingsId(analysisData.watermelon_analysis_settings_id);
       }
 
@@ -255,14 +270,33 @@ export default function FarmSettings() {
                 style={styles.slider}
                 minimumValue={50}
                 maximumValue={300}
-                step={1}
+                step={0.5}
                 value={freqMin}
-                onValueChange={setFreqMin}
+                onValueChange={(val) => {
+                  setFreqMin(val);
+                  setFreqMinInput(val.toFixed(1));
+                }}
                 minimumTrackTintColor="#2D6A4F"
                 maximumTrackTintColor="#E0E0E0"
                 thumbTintColor="#2D6A4F"
               />
-              <Text style={styles.sliderValue}>{Math.round(freqMin)} Hz</Text>
+              <View style={styles.valueRow}>
+                <TextInput
+                  style={styles.valueInput}
+                  value={freqMinInput}
+                  onChangeText={(text) => {
+                    setFreqMinInput(text);
+                    const val = parseFloat(text);
+                    if (!isNaN(val) && val >= 50 && val <= 300) {
+                      setFreqMin(val);
+                    }
+                  }}
+                  onBlur={() => setFreqMinInput(freqMin.toFixed(1))}
+                  keyboardType="decimal-pad"
+                  placeholderTextColor="#A0A0A0"
+                />
+                <Text style={styles.valueUnit}>Hz</Text>
+              </View>
             </View>
 
             <Text style={styles.filterTitle}>Max Frequency (Hz)</Text>
@@ -271,48 +305,103 @@ export default function FarmSettings() {
                 style={styles.slider}
                 minimumValue={50}
                 maximumValue={300}
-                step={1}
+                step={0.5}
                 value={freqMax}
-                onValueChange={setFreqMax}
+                onValueChange={(val) => {
+                  setFreqMax(val);
+                  setFreqMaxInput(val.toFixed(1));
+                }}
                 minimumTrackTintColor="#2D6A4F"
                 maximumTrackTintColor="#E0E0E0"
                 thumbTintColor="#2D6A4F"
               />
-              <Text style={styles.sliderValue}>{Math.round(freqMax)} Hz</Text>
+              <View style={styles.valueRow}>
+                <TextInput
+                  style={styles.valueInput}
+                  value={freqMaxInput}
+                  onChangeText={(text) => {
+                    setFreqMaxInput(text);
+                    const val = parseFloat(text);
+                    if (!isNaN(val) && val >= 50 && val <= 300) {
+                      setFreqMax(val);
+                    }
+                  }}
+                  onBlur={() => setFreqMaxInput(freqMax.toFixed(1))}
+                  keyboardType="decimal-pad"
+                  placeholderTextColor="#A0A0A0"
+                />
+                <Text style={styles.valueUnit}>Hz</Text>
+              </View>
             </View>
 
             <Text style={styles.filterTitle}>Min Amplitude</Text>
             <View style={styles.sliderContainer}>
               <Slider
                 style={styles.slider}
-                minimumValue={0.1}
-                maximumValue={2.0}
-                step={0.1}
+                minimumValue={0.05}
+                maximumValue={0.5}
+                step={0.01}
                 value={ampMin}
-                onValueChange={setAmpMin}
+                onValueChange={(val) => {
+                  setAmpMin(val);
+                  setAmpMinInput(val.toFixed(2));
+                }}
                 minimumTrackTintColor="#2D6A4F"
                 maximumTrackTintColor="#E0E0E0"
                 thumbTintColor="#2D6A4F"
               />
-              <Text style={styles.sliderValue}>{ampMin.toFixed(1)}</Text>
+              <View style={styles.valueRow}>
+                <TextInput
+                  style={styles.valueInput}
+                  value={ampMinInput}
+                  onChangeText={(text) => {
+                    setAmpMinInput(text);
+                    const val = parseFloat(text);
+                    if (!isNaN(val) && val >= 0.05 && val <= 0.5) {
+                      setAmpMin(val);
+                    }
+                  }}
+                  onBlur={() => setAmpMinInput(ampMin.toFixed(2))}
+                  keyboardType="decimal-pad"
+                  placeholderTextColor="#A0A0A0"
+                />
+                <Text style={styles.valueUnit}></Text>
+              </View>
             </View>
 
-            <Text style={styles.filterTitle}>Min Decay Time (ms)</Text>
+            <Text style={styles.filterTitle}>Min Reverberation Time (ms)</Text>
             <View style={styles.sliderContainer}>
               <Slider
                 style={styles.slider}
                 minimumValue={50}
-                maximumValue={500}
+                maximumValue={2500}
                 step={10}
                 value={decayThreshold}
-                onValueChange={setDecayThreshold}
+                onValueChange={(val) => {
+                  setDecayThreshold(val);
+                  setDecayInput(val.toFixed(0));
+                }}
                 minimumTrackTintColor="#2D6A4F"
                 maximumTrackTintColor="#E0E0E0"
                 thumbTintColor="#2D6A4F"
               />
-              <Text style={styles.sliderValue}>
-                {Math.round(decayThreshold)} ms
-              </Text>
+              <View style={styles.valueRow}>
+                <TextInput
+                  style={styles.valueInput}
+                  value={decayInput}
+                  onChangeText={(text) => {
+                    setDecayInput(text);
+                    const val = parseFloat(text);
+                    if (!isNaN(val) && val >= 50 && val <= 500) {
+                      setDecayThreshold(val);
+                    }
+                  }}
+                  onBlur={() => setDecayInput(decayThreshold.toFixed(0))}
+                  keyboardType="number-pad"
+                  placeholderTextColor="#A0A0A0"
+                />
+                <Text style={styles.valueUnit}>ms</Text>
+              </View>
             </View>
 
             <View style={styles.divider} />
@@ -497,5 +586,30 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
+  },
+  valueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+    gap: 8,
+  },
+  valueInput: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#2D6A4F",
+    textAlign: "center",
+    minWidth: 60,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  valueUnit: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#6C757D",
   },
 });
