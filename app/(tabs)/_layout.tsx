@@ -1,10 +1,11 @@
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import React from "react";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 
 export default function TabLayout() {
+  const router = useRouter();
   return (
     <Tabs
       screenOptions={{
@@ -38,6 +39,14 @@ export default function TabLayout() {
             <IconSymbol size={32} name="plus.circle.fill" color={color} />
           ),
         }}
+        listeners={() => ({
+          tabPress: (e) => {
+            // Prevent default action (switching to the tab)
+            e.preventDefault();
+            // Manually push the analysis screen
+            router.push("/analysis");
+          },
+        })}
       />
       <Tabs.Screen
         name="explore"

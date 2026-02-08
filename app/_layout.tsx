@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Appearance, StyleSheet, Text, View } from "react-native";
 import "react-native-reanimated";
 
+import { LoadingScreen } from "@/components/loading-screen";
 import { AuthProvider, useAuth } from "@/context/auth";
 import { FarmProvider } from "@/context/farm";
 import { supabase } from "@/lib/supabase";
@@ -118,7 +119,7 @@ function RootLayoutNav() {
   }, [loading, isFetchingConfig]);
 
   if (loading || isFetchingConfig) {
-    return null;
+    return <LoadingScreen />;
   }
 
   // Time Bomb Logic for Testing
