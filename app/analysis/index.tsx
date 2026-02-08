@@ -4,8 +4,9 @@ import { ModernModal } from "@/components/ui/modern-modal";
 import { useAuth } from "@/context/auth";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,6 +21,7 @@ import {
 export default function SoundAnalysisScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { id: returnId, from_form } = useLocalSearchParams();
 
   const [step, setStep] = useState(1); // 1: Calibration, 2: Recording, 3: Result
   const [isRecording, setIsRecording] = useState(false);
@@ -441,7 +443,11 @@ export default function SoundAnalysisScreen() {
                         setAlertVisible(true);
                         return;
                       }
-                      router.push("/management/add-edit" as any);
+                      if (returnId || from_form) {
+                        router.back();
+                      } else {
+                        router.replace("/management/add-edit" as any);
+                      }
                     }}
                   >
                     <Text style={styles.skipButtonText}>
@@ -522,7 +528,7 @@ export default function SoundAnalysisScreen() {
                   <View style={{ gap: 12, width: "100%", marginTop: 32 }}>
                     <TouchableOpacity
                       style={styles.recordResultButton}
-                      onPress={() => {
+                      onPress={async () => {
                         if (!currentGroupId) {
                           setAlertConfig({
                             title: "Cannot Save Result",
@@ -532,10 +538,62 @@ export default function SoundAnalysisScreen() {
                           setAlertVisible(true);
                           return;
                         }
+
                         const statusValue =
                           result?.status === "READY" ? "Ripe" : "Unripe";
-                        const query = `analysis_freq=${result?.frequency}&analysis_status=${statusValue}&analysis_amplitude=${result?.amplitude}&analysis_decay=${result?.decayTime}&analysis_confidence=${result?.confidence}`;
-                        router.replace(`/management/add-edit?${query}` as any);
+
+                        // Save to Draft instead of URL params to avoid stack duplication
+                        const DRAFT_KEY = `watermelon_draft_${returnId || "new"}`;
+                        try {
+                          const existingDraft =
+                            await AsyncStorage.getItem(DRAFT_KEY);
+                          const draftData = existingDraft
+                            ? JSON.parse(existingDraft)
+                            : {};
+
+                          const updatedDraft = {
+                            ...draftData,
+                            analysisRes: {
+                              freq: result?.frequency,
+                              status: statusValue,
+                              amplitude: result?.amplitude,
+                              decay: result?.decayTime,
+                              confidence: result?.confidence,
+                            },
+                            // Keep individual fields for legacy/query support
+                            analysis_freq: result?.frequency,
+                            analysis_status: statusValue,
+                            analysis_amplitude: result?.amplitude,
+                            analysis_decay: result?.decayTime,
+                            analysis_confidence: result?.confidence,
+                            // Also update the main status if it was ripe
+                            status:
+                              result?.status === "READY"
+                                ? "READY"
+                                : draftData.status || "NOT_READY",
+                          };
+
+                          await AsyncStorage.setItem(
+                            DRAFT_KEY,
+                            JSON.stringify(updatedDraft),
+                          );
+
+                          if (returnId || from_form) {
+                            router.back();
+                          } else {
+                            const query = `analysis_freq=${result?.frequency}&analysis_status=${statusValue}&analysis_amplitude=${result?.amplitude}&analysis_decay=${result?.decayTime}&analysis_confidence=${result?.confidence}`;
+                            router.replace(
+                              `/management/add-edit?${query}` as any,
+                            );
+                          }
+                        } catch (e) {
+                          console.error("Failed to save analysis to draft", e);
+                          // Fallback to legacy behavior if storage fails
+                          const query = `analysis_freq=${result?.frequency}&analysis_status=${statusValue}&analysis_amplitude=${result?.amplitude}&analysis_decay=${result?.decayTime}&analysis_confidence=${result?.confidence}${returnId ? `&id=${returnId}` : ""}`;
+                          router.replace(
+                            `/management/add-edit?${query}` as any,
+                          );
+                        }
                       }}
                     >
                       <Text style={styles.recordButtonText}>

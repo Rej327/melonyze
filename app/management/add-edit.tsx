@@ -4,6 +4,8 @@ import { useAuth } from "@/context/auth";
 import { useFarm } from "@/context/farm";
 import { supabase } from "@/lib/supabase";
 import { MaterialIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -20,7 +22,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const VARIETIES = [
   "Sugar Baby",
@@ -44,7 +45,6 @@ export default function AddEditWatermelon() {
   } = useLocalSearchParams();
   const { user } = useAuth();
   const { activeFarm, myFarms, loading: farmLoading } = useFarm();
-  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
@@ -72,71 +72,193 @@ export default function AddEditWatermelon() {
   const [imgSourceModalVisible, setImgSourceModalVisible] = useState(false);
   const [currentGroupId, setCurrentGroupId] = useState<string | null>(null);
 
+  // Analysis results (can be loaded from draft)
+  const [analysisRes, setAnalysisRes] = useState<{
+    freq?: string;
+    status?: string;
+    amplitude?: string;
+    decay?: string;
+    confidence?: string;
+  }>({});
+
+  const DRAFT_KEY = `watermelon_draft_${id || "new"}`;
+
+  // Save draft on changes
+  useEffect(() => {
+    const saveDraft = async () => {
+      try {
+        const draft = {
+          label,
+          variety,
+          brix,
+          description,
+          batch,
+          status,
+          image,
+          currentGroupId,
+          analysisRes, // Include analysis results in draft
+        };
+        await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      } catch (e) {
+        console.error("Failed to save draft", e);
+      }
+    };
+    // Don't save empty state on initial mount to avoid overwriting recent scan results
+    if (label || variety || image || analysisRes.freq) {
+      saveDraft();
+    }
+  }, [
+    label,
+    variety,
+    brix,
+    description,
+    batch,
+    status,
+    image,
+    currentGroupId,
+    analysisRes,
+    DRAFT_KEY,
+  ]);
+
+  const clearDraft = async () => {
+    try {
+      await AsyncStorage.removeItem(DRAFT_KEY);
+      // Reset state
+      setLabel("");
+      setVariety("");
+      setBrix("");
+      setDescription("");
+      setBatch(
+        "Batch-" +
+          new Date().toLocaleString("default", { month: "short" }) +
+          "-" +
+          new Date().getDate(),
+      );
+      setStatus("NOT_READY");
+      setImage(null);
+      setAnalysisRes({});
+      if (activeFarm) setCurrentGroupId(activeFarm.farm_group_id);
+
+      showAlert("Success", "Form cleared", "success");
+    } catch (e) {
+      console.error("Failed to clear draft", e);
+    }
+  };
+
   useEffect(() => {
     if (activeFarm && !currentGroupId) {
       setCurrentGroupId(activeFarm.farm_group_id);
     }
   }, [activeFarm, currentGroupId]);
 
-  const fetchData = useCallback(async () => {
-    if (!id || !user) return;
-    try {
-      setFetching(true);
-      const { data, error } = await supabase
-        .from("watermelon_item_table")
-        .select(
-          `
-          *,
-          watermelon_sweetness_record_table (
-            watermelon_sweetness_record_score,
-            watermelon_sweetness_record_notes
+  // Main data loading logic
+  const loadData = useCallback(async () => {
+    // 1. If we have an ID, fetch from DB first (only once on first load or if ID changes)
+    if (id && user && fetching) {
+      try {
+        const { data, error } = await supabase
+          .from("watermelon_item_table")
+          .select(
+            `
+            *,
+            watermelon_sweetness_record_table (
+              watermelon_sweetness_record_score,
+              watermelon_sweetness_record_notes
+            )
+          `,
           )
-        `,
-        )
-        .eq("watermelon_item_id", id)
-        .order("watermelon_sweetness_record_created_at", {
-          foreignTable: "watermelon_sweetness_record_table",
-          ascending: false,
-        })
-        .limit(1, { foreignTable: "watermelon_sweetness_record_table" })
-        .single();
+          .eq("watermelon_item_id", id)
+          .order("watermelon_sweetness_record_created_at", {
+            foreignTable: "watermelon_sweetness_record_table",
+            ascending: false,
+          })
+          .limit(1, { foreignTable: "watermelon_sweetness_record_table" })
+          .single();
 
-      if (error) throw error;
-      if (data) {
-        setLabel(data.watermelon_item_label);
-        setVariety(data.watermelon_item_variety);
-
-        // Handle nested sweetness record
-        const latestSweetness = data.watermelon_sweetness_record_table?.[0];
-        setBrix(
-          latestSweetness?.watermelon_sweetness_record_score?.toString() || "",
-        );
-
-        setStatus(data.watermelon_item_harvest_status);
-        setDescription(data.watermelon_item_description || "");
-        setImage(data.watermelon_item_image_url);
-        setCurrentGroupId(data.farm_group_id);
-        if (data.watermelon_item_batch_number)
-          setBatch(data.watermelon_item_batch_number);
+        if (error) throw error;
+        if (data) {
+          setLabel(data.watermelon_item_label);
+          setVariety(data.watermelon_item_variety);
+          const latestSweetness = data.watermelon_sweetness_record_table?.[0];
+          setBrix(
+            latestSweetness?.watermelon_sweetness_record_score?.toString() ||
+              "",
+          );
+          setStatus(data.watermelon_item_harvest_status);
+          setDescription(data.watermelon_item_description || "");
+          setImage(data.watermelon_item_image_url);
+          setCurrentGroupId(data.farm_group_id);
+          if (data.watermelon_item_batch_number)
+            setBatch(data.watermelon_item_batch_number);
+        }
+      } catch (error) {
+        console.error("Error fetching watermelon:", error);
+      } finally {
+        setFetching(false);
       }
-    } catch (error) {
-      console.error("Error fetching watermelon:", error);
-    } finally {
-      setFetching(false);
     }
-  }, [id, user]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    // 2. Check for draft and overwrite if it exists
+    // This ensures that mid-edit changes (like those preserved during a scan)
+    // take precedence over the saved DB version.
+    try {
+      const savedDraft = await AsyncStorage.getItem(DRAFT_KEY);
+      if (savedDraft) {
+        const draft = JSON.parse(savedDraft);
+        if (draft.label !== undefined) setLabel(draft.label);
+        if (draft.variety !== undefined) setVariety(draft.variety);
+        if (draft.brix !== undefined) setBrix(draft.brix);
+        if (draft.description !== undefined) setDescription(draft.description);
+        if (draft.batch !== undefined) setBatch(draft.batch);
+        if (draft.status !== undefined) setStatus(draft.status);
+        if (draft.image !== undefined) setImage(draft.image);
+        if (draft.currentGroupId !== undefined)
+          setCurrentGroupId(draft.currentGroupId);
 
-  // If analysis data passed via query, pre-fill
+        if (draft.analysisRes) {
+          setAnalysisRes(draft.analysisRes);
+        } else if (draft.analysis_freq) {
+          // Legacy support for older draft format
+          setAnalysisRes({
+            freq: draft.analysis_freq,
+            status: draft.analysis_status,
+            amplitude: draft.analysis_amplitude,
+            decay: draft.analysis_decay,
+            confidence: draft.analysis_confidence,
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load draft", e);
+    }
+  }, [id, user, DRAFT_KEY, fetching]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData]),
+  );
+
+  // Still handle analysis results from query params (initial load only)
   useEffect(() => {
-    if (analysis_freq) {
+    if (analysis_freq && fetching) {
       setStatus(analysis_status === "Ripe" ? "READY" : "NOT_READY");
-      // Optionally pre-fill other fields if needed
+      setAnalysisRes({
+        freq: analysis_freq as string,
+        status: analysis_status as string,
+        amplitude: analysis_amplitude as string,
+        decay: analysis_decay as string,
+        confidence: analysis_confidence as string,
+      });
     }
-  }, [analysis_freq, analysis_status]);
+  }, [
+    analysis_freq,
+    analysis_status,
+    analysis_amplitude,
+    analysis_decay,
+    analysis_confidence,
+    fetching,
+  ]);
 
   const showAlert = (
     title: string,
@@ -208,15 +330,15 @@ export default function AddEditWatermelon() {
         if (error) throw error;
 
         // If from analysis, also record the sound analysis
-        if (analysis_freq) {
+        if (analysisRes.freq) {
           await supabase.rpc("record_sound_analysis", {
             p_executing_user_id: user?.id,
             p_item_id: newItem, // RPC returns ID of new item
-            p_frequency: parseFloat(analysis_freq as string),
-            p_amplitude: parseFloat(analysis_amplitude as string),
-            p_decay: parseFloat(analysis_decay as string),
-            p_confidence: parseFloat(analysis_confidence as string),
-            p_is_ripe: analysis_status === "Ripe",
+            p_frequency: parseFloat(analysisRes.freq as string),
+            p_amplitude: parseFloat(analysisRes.amplitude as string),
+            p_decay: parseFloat(analysisRes.decay as string),
+            p_confidence: parseFloat(analysisRes.confidence as string),
+            p_is_ripe: analysisRes.status === "Ripe",
           });
         }
       }
@@ -226,6 +348,7 @@ export default function AddEditWatermelon() {
         `Watermelon ${id ? "updated" : "created"} successfully!`,
         "success",
       );
+      await AsyncStorage.removeItem(DRAFT_KEY);
       setTimeout(() => {
         router.back();
       }, 1500);
@@ -278,7 +401,12 @@ export default function AddEditWatermelon() {
       <ModernHeader
         title={id ? "Edit Watermelon" : "New Watermelon"}
         subtitle={activeFarm?.farm_group_name}
-        onBack={() => router.back()}
+        onBack={id ? () => router.back() : () => router.replace("/")}
+        rightActions={
+          <TouchableOpacity onPress={clearDraft} style={styles.iconContainer}>
+            <MaterialIcons name="delete-sweep" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        }
       />
 
       <KeyboardAvoidingView
@@ -350,6 +478,53 @@ export default function AddEditWatermelon() {
                 />
               </View>
             </View>
+
+            <Text style={styles.fieldLabel}>Acoustic Analysis</Text>
+            {analysisRes.freq ? (
+              <View style={styles.analysisContainer}>
+                <View style={styles.analysisInfo}>
+                  <MaterialIcons name="analytics" size={24} color="#2D6A4F" />
+                  <View style={styles.analysisText}>
+                    <Text style={styles.analysisMainText}>
+                      {analysisRes.status === "Ripe"
+                        ? "Ready for Harvest"
+                        : "Still Ripening"}
+                    </Text>
+                    <Text style={styles.analysisSubText}>
+                      {analysisRes.freq}Hz •{" "}
+                      {Math.round(
+                        parseFloat(analysisRes.confidence as string) * 100,
+                      )}
+                      % confidence
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.reanalyzeButton}
+                  onPress={() =>
+                    router.push(
+                      `/analysis?from_form=true${id ? `&id=${id}` : ""}` as any,
+                    )
+                  }
+                >
+                  <Text style={styles.reanalyzeText}>Re-analyze</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.analyzeButton}
+                onPress={() =>
+                  router.push(
+                    `/analysis?from_form=true${id ? `&id=${id}` : ""}` as any,
+                  )
+                }
+              >
+                <MaterialIcons name="mic" size={20} color="#2D6A4F" />
+                <Text style={styles.analyzeButtonText}>
+                  Start Acoustic Scan
+                </Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.fieldLabel}>Status</Text>
             <View style={styles.statusToggle}>
@@ -533,6 +708,14 @@ const styles = StyleSheet.create({
   },
   previewImage: { width: "100%", height: "100%" },
   emptyImage: { flex: 1, justifyContent: "center", alignItems: "center" },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   emptyImageText: {
     color: "#A0A0A0",
     marginTop: 8,
@@ -624,10 +807,66 @@ const styles = StyleSheet.create({
   varietyText: { fontSize: 16, color: "#1B4332" },
   sourceOptions: {
     flexDirection: "row",
-    width: "50%",
-    justifyContent: "space-between",
+    width: "100%",
+    justifyContent: "space-around",
     paddingVertical: 20,
   },
   sourceButton: { alignItems: "center", gap: 8 },
   sourceText: { fontSize: 14, fontWeight: "700", color: "#2D6A4F" },
+  analysisContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  analysisInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  analysisText: {
+    marginLeft: 12,
+  },
+  analysisMainText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1B4332",
+  },
+  analysisSubText: {
+    fontSize: 13,
+    color: "#6C757D",
+    marginTop: 2,
+  },
+  reanalyzeButton: {
+    backgroundColor: "#F0F0F0",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  reanalyzeText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#2D6A4F",
+  },
+  analyzeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E9F5EE",
+    borderRadius: 12,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: "#2D6A4F",
+    borderStyle: "dashed",
+    gap: 8,
+  },
+  analyzeButtonText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#2D6A4F",
+  },
 });

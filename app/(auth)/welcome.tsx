@@ -1,12 +1,20 @@
+import { ModernModal } from "@/components/ui/modern-modal";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useState } from "react";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const [infoVisible, setInfoVisible] = useState(false);
 
   const steps = [
     {
@@ -59,6 +67,89 @@ export default function WelcomeScreen() {
             </View>
           ))}
         </View>
+
+        <TouchableOpacity
+          style={styles.otherInfoButton}
+          onPress={() => setInfoVisible(true)}
+        >
+          <MaterialIcons name="info-outline" size={20} color="#2D6A4F" />
+          <Text style={styles.otherInfoText}>Other info</Text>
+        </TouchableOpacity>
+
+        <ModernModal
+          visible={infoVisible}
+          onClose={() => setInfoVisible(false)}
+          title="Alternative Ripeness Tips"
+          type="info"
+        >
+          <ScrollView
+            style={styles.modalScroll}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.modalImageContainer}>
+              <Image
+                source={require("@/assets/images/icon.png")}
+                style={styles.modalImage}
+                contentFit="contain"
+              />
+              <Text style={styles.modalImageCaption}>
+                Visual cues for harvest readiness
+              </Text>
+            </View>
+
+            <View style={styles.tipItem}>
+              <View style={styles.tipIconCircle}>
+                <MaterialIcons name="wb-sunny" size={24} color="#2D6A4F" />
+              </View>
+              <View style={styles.tipContent}>
+                <Text style={styles.tipTitle}>The Ground Spot</Text>
+                <Text style={styles.tipDescription}>
+                  Look for a creamy yellow spot on the underside. If it&apos;s
+                  white or greenish, it&apos;s not ready.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.tipItem}>
+              <View style={styles.tipIconCircle}>
+                <MaterialIcons name="grass" size={24} color="#2D6A4F" />
+              </View>
+              <View style={styles.tipContent}>
+                <Text style={styles.tipTitle}>The Tendril</Text>
+                <Text style={styles.tipDescription}>
+                  The curly tendril closest to the stem should be completely
+                  dried and brown.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.tipItem}>
+              <View style={styles.tipIconCircle}>
+                <MaterialIcons name="texture" size={24} color="#2D6A4F" />
+              </View>
+              <View style={styles.tipContent}>
+                <Text style={styles.tipTitle}>Skin Appearance</Text>
+                <Text style={styles.tipDescription}>
+                  A ripe watermelon usually has a dull skin. Shiny skin often
+                  indicates it&apos;s under-ripe.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.tipItem}>
+              <View style={styles.tipIconCircle}>
+                <MaterialIcons name="hearing" size={24} color="#2D6A4F" />
+              </View>
+              <View style={styles.tipContent}>
+                <Text style={styles.tipTitle}>The Thump Test</Text>
+                <Text style={styles.tipDescription}>
+                  Tap it! A ripe one sounds like a hollow &quot;thunk&quot;,
+                  while under-ripe sounds more metallic.
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </ModernModal>
 
         <View style={styles.footer}>
           <Text style={styles.welcomeText}>
@@ -220,5 +311,72 @@ const styles = StyleSheet.create({
     color: "#2D6A4F",
     fontSize: 18,
     fontWeight: "700",
+  },
+  otherInfoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    marginTop: -10,
+    marginBottom: 10,
+  },
+  otherInfoText: {
+    color: "#2D6A4F",
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 6,
+    textDecorationLine: "underline",
+  },
+  modalScroll: {
+    maxHeight: 400,
+    width: "100%",
+  },
+  tipItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 20,
+    backgroundColor: "#F8FBF9",
+    padding: 12,
+    borderRadius: 16,
+  },
+  tipIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#D8F3DC",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  tipContent: {
+    flex: 1,
+  },
+  tipTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#1B4332",
+    marginBottom: 4,
+  },
+  tipDescription: {
+    fontSize: 13,
+    color: "#495057",
+    lineHeight: 18,
+  },
+  modalImageContainer: {
+    alignItems: "center",
+    marginBottom: 24,
+    backgroundColor: "#F8FBF9",
+    padding: 20,
+    borderRadius: 24,
+  },
+  modalImage: {
+    width: 120,
+    height: 120,
+    marginBottom: 12,
+  },
+  modalImageCaption: {
+    fontSize: 14,
+    color: "#74C69D",
+    fontWeight: "600",
   },
 });

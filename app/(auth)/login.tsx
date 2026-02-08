@@ -73,6 +73,15 @@ export default function LoginScreen() {
           type={alertConfig.type}
         />
 
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.push("/(auth)/welcome")}
+          >
+            <MaterialIcons name="arrow-back" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.inner}>
           <View style={styles.logoContainer}>
             <View style={styles.logoCircle}>
@@ -178,6 +187,20 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    height: 60,
+    justifyContent: "center",
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   inner: {
     flex: 1,
