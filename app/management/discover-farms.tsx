@@ -16,18 +16,15 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function DiscoverFarmsScreen() {
   const { user } = useAuth();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [allFarms, setAllFarms] = useState<any[]>([]);
   const [filteredFarms, setFilteredFarms] = useState<any[]>([]);
-  const [userMemberships, setUserMemberships] = useState<any[]>([]);
   const [search, setSearch] = useState("");
 
   // Modal State
@@ -57,23 +54,13 @@ export default function DiscoverFarmsScreen() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      // 1. Fetch user memberships to check status
-      const { data: memberships } = await supabase
-        .from("farm_membership_table")
-        .select("*")
-        .eq("farmer_account_id", user.id);
-      setUserMemberships(memberships || []);
+      const { data, error } = await supabase.rpc("get_discover_farms", {
+        p_farmer_id: user.id,
+      });
 
-      // 2. Fetch all available farms
-      const { data: farmsData } = await supabase
-        .from("farm_group_table")
-        .select(
-          "*, farmer_account_table(farmer_account_first_name, farmer_account_last_name)",
-        )
-        .is("farm_group_deleted_at", null);
-
-      setAllFarms(farmsData || []);
-      setFilteredFarms(farmsData || []);
+      if (error) throw error;
+      setAllFarms(data || []);
+      setFilteredFarms(data || []);
     } catch (error) {
       console.error("Error fetching farm data:", error);
     } finally {
@@ -114,27 +101,91 @@ export default function DiscoverFarmsScreen() {
       });
       if (error) throw error;
       showAlert("Success", "Join request sent!", "success");
-      fetchData();
+      await fetchData();
     } catch (error: any) {
       showAlert("Error", error.message, "error");
     }
   };
 
+  const handleCancelJoin = async (groupId: string) => {
+    try {
+      const { error } = await supabase
+        .from("farm_membership_table")
+        .delete()
+        .eq("farm_group_id", groupId)
+        .eq("farmer_account_id", user?.id)
+        .eq("farm_membership_status", "PENDING");
+
+      if (error) throw error;
+      showAlert("Success", "Join request cancelled.", "success");
+      await fetchData();
+    } catch (error: any) {
+      showAlert("Error", error.message, "error");
+    }
+  };
+
+  const handleLeaveFarm = async (groupId: string) => {
+    const confirmLeave = async () => {
+      setModalVisible(false);
+      try {
+        // 1. Remove membership
+        const { error: memError } = await supabase
+          .from("farm_membership_table")
+          .delete()
+          .eq("farm_group_id", groupId)
+          .eq("farmer_account_id", user?.id);
+
+        if (memError) throw memError;
+
+        // 2. If this was the current farm, reset it
+        const { data: profile } = await supabase
+          .from("farmer_account_table")
+          .select("current_farm_group_id")
+          .eq("farmer_account_id", user?.id)
+          .single();
+
+        if (profile?.current_farm_group_id === groupId) {
+          await supabase
+            .from("farmer_account_table")
+            .update({ current_farm_group_id: null })
+            .eq("farmer_account_id", user?.id);
+        }
+
+        showAlert("Success", "You have left the farm group.", "success");
+        await fetchData();
+      } catch (error: any) {
+        showAlert("Error", error.message, "error");
+      }
+    };
+
+    setModalConfig({
+      title: "Leave Farm",
+      message: "Are you sure you want to leave this farm group?",
+      type: "warning",
+      onConfirm: confirmLeave,
+    });
+    setModalVisible(true);
+  };
+
   const renderFarmItem = ({ item }: { item: any }) => {
-    const myMembership = userMemberships.find(
-      (m) => m.farm_group_id === item.farm_group_id,
-    );
-    const isPending = myMembership?.farm_membership_status === "PENDING";
-    const isRejected = myMembership?.farm_membership_status === "REJECTED";
-    const isAccepted = myMembership?.farm_membership_status === "ACCEPTED";
+    const isPending = item.membership_status === "PENDING";
+    const isRejected = item.membership_status === "REJECTED";
+    const isAccepted = item.membership_status === "ACCEPTED";
+    const isOwner = item.farm_owner_id === user?.id;
 
     return (
       <View style={styles.farmItem}>
         <View style={styles.farmMain}>
-          <Text style={styles.farmName}>{item.farm_group_name}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Text style={styles.farmName}>{item.farm_group_name} </Text>
+            {isOwner && (
+              <View style={styles.ownerSmallBadge}>
+                <Text style={styles.ownerSmallBadgeText}>OWNER</Text>
+              </View>
+            )}
+          </View>
           <Text style={styles.farmOwner}>
-            Owner: {item.farmer_account_table.farmer_account_first_name}{" "}
-            {item.farmer_account_table.farmer_account_last_name}
+            Owner: {item.owner_first_name} {item.owner_last_name}
           </Text>
           {item.farm_group_description ? (
             <Text style={styles.farmDesc} numberOfLines={2}>
@@ -144,15 +195,40 @@ export default function DiscoverFarmsScreen() {
         </View>
 
         <View style={styles.actionContainer}>
-          {isAccepted ? (
+          {isOwner ? (
             <View style={styles.joinedBadge}>
-              <MaterialIcons name="check-circle" size={24} color="#2D6A4F" />
-              <Text style={styles.joinedText}>Joined</Text>
+              <MaterialIcons name="stars" size={24} color="#2D6A4F" />
+              <Text style={styles.joinedText}>My Farm</Text>
+            </View>
+          ) : isAccepted ? (
+            <View style={styles.pendingContainer}>
+              <View style={styles.joinedBadge}>
+                <MaterialIcons name="check-circle" size={24} color="#2D6A4F" />
+                <Text style={styles.joinedText}>Joined</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.leaveBtn}
+                onPress={() => handleLeaveFarm(item.farm_group_id)}
+              >
+                <Text style={styles.leaveBtnText}>Leave</Text>
+              </TouchableOpacity>
             </View>
           ) : isPending ? (
-            <View style={styles.pendingBadge}>
-              <MaterialIcons name="hourglass-empty" size={20} color="#F59E0B" />
-              <Text style={styles.pendingText}>Pending</Text>
+            <View style={styles.pendingContainer}>
+              <View style={styles.pendingBadge}>
+                <MaterialIcons
+                  name="hourglass-empty"
+                  size={20}
+                  color="#F59E0B"
+                />
+                <Text style={styles.pendingText}>Pending</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => handleCancelJoin(item.farm_group_id)}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           ) : isRejected ? (
             <View style={styles.rejectedBadge}>
@@ -205,6 +281,7 @@ export default function DiscoverFarmsScreen() {
         <FlatList
           data={filteredFarms}
           renderItem={renderFarmItem}
+          extraData={[search]}
           keyExtractor={(item) => item.farm_group_id}
           contentContainerStyle={styles.listContent}
           refreshControl={
@@ -313,6 +390,38 @@ const styles = StyleSheet.create({
   pendingText: { fontSize: 12, fontWeight: "700", color: "#F59E0B" },
   rejectedBadge: { alignItems: "center", gap: 4 },
   rejectedText: { fontSize: 12, fontWeight: "700", color: "#D90429" },
+  pendingContainer: { alignItems: "center" },
+  cancelBtn: {
+    backgroundColor: "transparent",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: "#D90429",
+    marginTop: 8,
+  },
+  cancelBtnText: { color: "#D90429", fontWeight: "700", fontSize: 12 },
+  leaveBtn: {
+    backgroundColor: "transparent",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#FDE2E4",
+    marginTop: 8,
+  },
+  leaveBtnText: { color: "#D90429", fontWeight: "600", fontSize: 12 },
+  ownerSmallBadge: {
+    backgroundColor: "#D8F3DC",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  ownerSmallBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#2D6A4F",
+  },
   emptyContainer: {
     alignItems: "center",
     marginTop: 100,

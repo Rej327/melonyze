@@ -496,60 +496,64 @@ export default function InventoryScreen() {
           subtitle={
             loading || farmLoading
               ? "Loading your harvest..."
-              : myFarms.length > 0
-                ? `Managing ${myFarms.find((f) => f.farm_group_id === (selectedFarmId || activeFarm?.farm_group_id))?.farm_group_name || "Active Farm"}`
+              : selectedFarmId
+                ? `Managing ${myFarms.find((f) => f.farm_group_id === selectedFarmId)?.farm_group_name || "Active Farm"}`
                 : "Join a farm to start tracking"
           }
           rightActions={
-            <>
-              <TouchableOpacity
-                style={[
-                  styles.headerActionButton,
-                  isSelectionMode && {
-                    backgroundColor: "rgba(255, 255, 255, 0.81)",
-                  },
-                ]}
-                onPress={handleSelectAll}
-              >
-                <MaterialIcons
-                  name={
-                    isSelectionMode &&
-                    filteredItems.every((i) => selectedIds.includes(i.item_id))
-                      ? "deselect"
-                      : "select-all"
-                  }
-                  size={24}
-                  color={isSelectionMode ? "#2D6A4F" : "#FFFFFF"}
-                />
-              </TouchableOpacity>
-              {isSelectionMode && selectedIds.length > 0 ? (
+            selectedFarmId ? (
+              <>
                 <TouchableOpacity
                   style={[
                     styles.headerActionButton,
-                    {
+                    isSelectionMode && {
                       backgroundColor: "rgba(255, 255, 255, 0.81)",
                     },
                   ]}
-                  onPress={() => {
-                    setIsSelectionMode(false);
-                    setSelectedIds([]);
-                  }}
-                >
-                  <MaterialIcons name="close" size={24} color="#D90429" />
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.headerActionButton}
-                  onPress={() => setShowFilters(!showFilters)}
+                  onPress={handleSelectAll}
                 >
                   <MaterialIcons
-                    name={showFilters ? "filter-list-off" : "filter-list"}
+                    name={
+                      isSelectionMode &&
+                      filteredItems.every((i) =>
+                        selectedIds.includes(i.item_id),
+                      )
+                        ? "deselect"
+                        : "select-all"
+                    }
                     size={24}
-                    color="#FFFFFF"
+                    color={isSelectionMode ? "#2D6A4F" : "#FFFFFF"}
                   />
                 </TouchableOpacity>
-              )}
-            </>
+                {isSelectionMode && selectedIds.length > 0 ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.headerActionButton,
+                      {
+                        backgroundColor: "rgba(255, 255, 255, 0.81)",
+                      },
+                    ]}
+                    onPress={() => {
+                      setIsSelectionMode(false);
+                      setSelectedIds([]);
+                    }}
+                  >
+                    <MaterialIcons name="close" size={24} color="#D90429" />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.headerActionButton}
+                    onPress={() => setShowFilters(!showFilters)}
+                  >
+                    <MaterialIcons
+                      name={showFilters ? "filter-list-off" : "filter-list"}
+                      size={24}
+                      color="#FFFFFF"
+                    />
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : null
           }
         />
 
@@ -629,27 +633,33 @@ export default function InventoryScreen() {
           </View>
         )}
 
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBar}>
-            <MaterialIcons name="search" size={20} color="#999" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search label, variety..."
-              placeholderTextColor="#999"
-              value={search}
-              onChangeText={setSearch}
-            />
+        {selectedFarmId && (
+          <View style={styles.searchContainer}>
+            <View style={styles.searchBar}>
+              <MaterialIcons name="search" size={20} color="#999" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search label, variety..."
+                placeholderTextColor="#999"
+                value={search}
+                onChangeText={setSearch}
+              />
+            </View>
+            {hasActiveFilters && (
+              <TouchableOpacity
+                style={styles.clearFiltersButton}
+                onPress={clearAllFilters}
+              >
+                <MaterialIcons
+                  name="filter-list-off"
+                  size={20}
+                  color="#D90429"
+                />
+                <Text style={styles.clearFiltersText}>Clear</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          {hasActiveFilters && (
-            <TouchableOpacity
-              style={styles.clearFiltersButton}
-              onPress={clearAllFilters}
-            >
-              <MaterialIcons name="filter-list-off" size={20} color="#D90429" />
-              <Text style={styles.clearFiltersText}>Clear</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        )}
 
         <ModernModal
           visible={showFilters}
