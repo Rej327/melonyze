@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function FarmSettings() {
   const { user } = useAuth();
@@ -32,6 +33,7 @@ export default function FarmSettings() {
   });
 
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   // Analysis Settings
   const [freqMin, setFreqMin] = useState(60);
@@ -277,7 +279,12 @@ export default function FarmSettings() {
           onConfirm={alertConfig.onConfirm}
         />
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
+        >
           <View style={styles.form}>
             <Text style={styles.sectionTitle}>
               Ripeness Analysis Thresholds

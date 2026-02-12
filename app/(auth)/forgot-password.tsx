@@ -13,7 +13,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
@@ -25,6 +28,7 @@ export default function ForgotPasswordScreen() {
     type: "info" as any,
   });
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const handleResetPassword = async () => {
     if (!email) {
@@ -88,7 +92,12 @@ export default function ForgotPasswordScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.inner}>
+        <View
+          style={[
+            styles.inner,
+            { paddingBottom: Math.max(24, insets.bottom + 16) },
+          ]}
+        >
           <View style={styles.content}>
             <Text style={styles.title}>Forgot Password?</Text>
             <Text style={styles.subtitle}>

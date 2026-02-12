@@ -22,6 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const VARIETIES = [
   "Sugar Baby",
@@ -80,6 +81,7 @@ export default function AddEditWatermelon() {
     decay?: string;
     confidence?: string;
   }>({});
+  const insets = useSafeAreaInsets();
 
   const DRAFT_KEY = `watermelon_draft_${id || "new"}`;
 
@@ -413,7 +415,12 @@ export default function AddEditWatermelon() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={[styles.container, { backgroundColor: "#F8FBF9" }]}
       >
-        <ScrollView contentContainerStyle={styles.scroll}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
+        >
           {/* Image Picker */}
           <View style={styles.imageSection}>
             <TouchableOpacity

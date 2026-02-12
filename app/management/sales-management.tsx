@@ -135,7 +135,10 @@ export default function SalesManagementScreen() {
             data={sales}
             renderItem={renderSaleItem}
             keyExtractor={(item) => item.sale_id || Math.random().toString()}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[
+              styles.list,
+              { paddingBottom: insets.bottom + 40 },
+            ]}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}

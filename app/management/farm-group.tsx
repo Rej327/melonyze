@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function FarmGroupScreen() {
   const { user } = useAuth();
@@ -30,6 +31,7 @@ export default function FarmGroupScreen() {
   const [groupName, setGroupName] = useState("");
   const [groupDesc, setGroupDesc] = useState("");
   const [selectedFarmId, setSelectedFarmId] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
 
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -226,7 +228,12 @@ export default function FarmGroupScreen() {
           onConfirm={modalConfig.onConfirm}
         />
 
-        <ScrollView contentContainerStyle={styles.scroll}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: insets.bottom + 100 },
+          ]}
+        >
           {/* Farm List Chips */}
           <View style={styles.farmChips}>
             {myFarms.map((farm) => (
@@ -484,7 +491,12 @@ export default function FarmGroupScreen() {
         </ScrollView>
 
         {!isCreating && (
-          <View style={styles.footer}>
+          <View
+            style={[
+              styles.footer,
+              { paddingBottom: Math.max(24, insets.bottom + 16) },
+            ]}
+          >
             <TouchableOpacity
               style={styles.discoverButtonOutlined}
               onPress={() => router.push("/management/discover-farms")}

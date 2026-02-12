@@ -14,7 +14,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -28,6 +31,7 @@ export default function LoginScreen() {
     type: "info" as any,
   });
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -78,7 +82,11 @@ export default function LoginScreen() {
             style={styles.backButton}
             onPress={() => router.push("/(auth)/welcome")}
           >
-            <MaterialIcons name="arrow-back" size={28} color="#FFFFFF" />
+            <MaterialIcons
+              name="keyboard-backspace"
+              size={28}
+              color="#2D6A4F"
+            />
           </TouchableOpacity>
         </View>
 
@@ -169,7 +177,12 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
 
-            <View style={styles.footer}>
+            <View
+              style={[
+                styles.footer,
+                { paddingBottom: Math.max(24, insets.bottom + 16) },
+              ]}
+            >
               <Text style={[styles.footerText, { color: "#6C757D" }]}>
                 Don&apos;t have an account?{" "}
               </Text>

@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface WatermelonDetail {
   watermelon_item_id: string;
@@ -49,6 +50,7 @@ export default function WatermelonDetails() {
   const [isSaleModalVisible, setIsSaleModalVisible] = useState(false);
   const [saleAmount, setSaleAmount] = useState("");
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const isOwner = React.useMemo(
     () => watermelon?.farm_group_table?.farm_owner_id === user?.id,
@@ -253,7 +255,12 @@ export default function WatermelonDetails() {
           </View>
         </ModernModal>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
+        >
           <View style={styles.content}>
             <View style={styles.imageContainer}>
               <Image

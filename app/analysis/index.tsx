@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function SoundAnalysisScreen() {
   const router = useRouter();
@@ -44,6 +45,7 @@ export default function SoundAnalysisScreen() {
   const recordingRef = useRef<Audio.Recording | null>(null);
   const meteringDataRef = useRef<number[]>([]);
   const [currentGroupId, setCurrentGroupId] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -177,6 +179,26 @@ export default function SoundAnalysisScreen() {
     }
   }, [freqMin, freqMax, decayThreshold, ampMin]);
 
+  const cancelRecording = useCallback(async () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+
+    try {
+      if (recordingRef.current) {
+        await recordingRef.current.stopAndUnloadAsync();
+        recordingRef.current = null;
+      }
+    } catch (error) {
+      console.error("Error cancelling recording:", error);
+    }
+
+    setIsRecording(false);
+    setProgress(0);
+    meteringDataRef.current = [];
+  }, []);
+
   const startRecording = async () => {
     try {
       // Request permissions
@@ -292,7 +314,7 @@ export default function SoundAnalysisScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.container,
-          { backgroundColor: "#F8FBF9" },
+          { backgroundColor: "#F8FBF9", paddingBottom: insets.bottom + 100 },
         ]}
       >
         <View style={styles.progressContainer}>
@@ -623,18 +645,38 @@ export default function SoundAnalysisScreen() {
       </ScrollView>
 
       {step === 1 && (
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.recordButton}
-            onPress={startRecording}
-            disabled={isRecording}
-          >
-            <Text style={styles.recordButtonText}>
-              {isRecording
-                ? `Scanning... ${(progress * 100).toFixed(0)}%`
-                : "Start Acoustic Scan"}
-            </Text>
-          </TouchableOpacity>
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: Math.max(24, insets.bottom + 16) },
+          ]}
+        >
+          {isRecording ? (
+            <View style={{ gap: 12 }}>
+              <View style={styles.scanningContainer}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.recordButtonText}>
+                  Scanning... {(progress * 100).toFixed(0)}%
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={cancelRecording}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.recordButton}
+              onPress={startRecording}
+            >
+              <View style={styles.recordButtonContent}>
+                <MaterialIcons name="mic" size={24} color="#FFFFFF" />
+                <Text style={styles.recordButtonText}>Start Acoustic Scan</Text>
+              </View>
+            </TouchableOpacity>
+          )}
           {!currentGroupId && (
             <Text style={styles.footerWarning}>
               <MaterialIcons name="info" size={14} color="#D97706" /> You can
@@ -764,6 +806,31 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
+    height: 56,
+  },
+  scanningContainer: {
+    backgroundColor: "#2D6A4F",
+    borderRadius: 16,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    height: 56,
+    gap: 12,
+  },
+  recordButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  cancelButton: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  cancelButtonText: {
+    color: "#D90429",
+    fontSize: 14,
+    fontWeight: "600",
   },
   recordResultButton: {
     height: 56,

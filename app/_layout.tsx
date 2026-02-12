@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { Appearance, StyleSheet, Text, View } from "react-native";
 import "react-native-reanimated";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { LoadingScreen } from "@/components/loading-screen";
 import { AuthProvider, useAuth } from "@/context/auth";
@@ -174,18 +175,20 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AuthProvider>
-      <FarmProvider>
-        <ThemeProvider value={DefaultTheme}>
-          <RootLayoutNav />
-          <StatusBar
-            style="light"
-            backgroundColor="#2D6A4F"
-            translucent={false}
-          />
-        </ThemeProvider>
-      </FarmProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <FarmProvider>
+          <ThemeProvider value={DefaultTheme}>
+            <RootLayoutNav />
+            <StatusBar
+              style="light"
+              backgroundColor="#2D6A4F"
+              translucent={false}
+            />
+          </ThemeProvider>
+        </FarmProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 

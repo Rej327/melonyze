@@ -16,11 +16,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ItemManagementScreen() {
   const { user } = useAuth();
   const { activeFarm, isOwner, loading: farmLoading } = useFarm();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -195,7 +197,10 @@ export default function ItemManagementScreen() {
             data={itemRequests}
             renderItem={renderRequest}
             keyExtractor={(item) => item.item_id}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[
+              styles.list,
+              { paddingBottom: insets.bottom + 40 },
+            ]}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}

@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function DiscoverFarmsScreen() {
   const { user } = useAuth();
@@ -26,6 +27,7 @@ export default function DiscoverFarmsScreen() {
   const [allFarms, setAllFarms] = useState<any[]>([]);
   const [filteredFarms, setFilteredFarms] = useState<any[]>([]);
   const [search, setSearch] = useState("");
+  const insets = useSafeAreaInsets();
 
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -283,7 +285,10 @@ export default function DiscoverFarmsScreen() {
           renderItem={renderFarmItem}
           extraData={[search]}
           keyExtractor={(item) => item.farm_group_id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: insets.bottom + 24 },
+          ]}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

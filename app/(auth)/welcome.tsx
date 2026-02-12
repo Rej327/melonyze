@@ -1,4 +1,5 @@
 import { ModernModal } from "@/components/ui/modern-modal";
+import { PublicAnalyzerModal } from "@/components/ui/public-analyzer-modal";
 import { MaterialIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -10,11 +11,16 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const [infoVisible, setInfoVisible] = useState(false);
+  const [analyzerVisible, setAnalyzerVisible] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const steps = [
     {
@@ -25,7 +31,7 @@ export default function WelcomeScreen() {
     {
       icon: "mic",
       title: "Record",
-      description: "App captures the sound profile",
+      description: "App captures the profile",
     },
     {
       icon: "auto-graph",
@@ -36,7 +42,11 @@ export default function WelcomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.logoContainer}>
           <View style={styles.logoCircle}>
             <Image
@@ -68,13 +78,28 @@ export default function WelcomeScreen() {
           ))}
         </View>
 
-        <TouchableOpacity
-          style={styles.otherInfoButton}
-          onPress={() => setInfoVisible(true)}
-        >
-          <MaterialIcons name="info-outline" size={20} color="#2D6A4F" />
-          <Text style={styles.otherInfoText}>Other info</Text>
-        </TouchableOpacity>
+        <View style={styles.actionButtonsContainer}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => setInfoVisible(true)}
+          >
+            <MaterialIcons name="info-outline" size={20} color="#2D6A4F" />
+            <Text style={styles.actionButtonText}>Other Info</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => setAnalyzerVisible(true)}
+          >
+            <MaterialIcons name="mic" size={20} color="#2D6A4F" />
+            <Text style={styles.actionButtonText}>Try Analyzer</Text>
+          </TouchableOpacity>
+        </View>
+
+        <PublicAnalyzerModal
+          visible={analyzerVisible}
+          onClose={() => setAnalyzerVisible(false)}
+        />
 
         <ModernModal
           visible={infoVisible}
@@ -151,7 +176,12 @@ export default function WelcomeScreen() {
           </ScrollView>
         </ModernModal>
 
-        <View style={styles.footer}>
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: Math.max(24, insets.bottom + 16) },
+          ]}
+        >
           <Text style={styles.welcomeText}>
             Assess fruit ripeness through acoustic response analysis
           </Text>
@@ -170,7 +200,7 @@ export default function WelcomeScreen() {
             <Text style={styles.registerButtonText}>Create Account</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -180,13 +210,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#2D6A4F", // Dark Green
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  content: {
     backgroundColor: "#F8FBF9",
-    borderBottomLeftRadius: 40,
-    borderBottomRightRadius: 40,
     padding: 24,
-    justifyContent: "space-between",
   },
   logoContainer: {
     alignItems: "center",
@@ -270,7 +299,6 @@ const styles = StyleSheet.create({
   },
   footer: {
     width: "100%",
-    paddingBottom: 10,
   },
   welcomeText: {
     fontSize: 15,
@@ -312,20 +340,40 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
-  otherInfoButton: {
+  actionButtonsContainer: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 24,
+    marginTop: 8,
+  },
+  actionButton: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
-    marginTop: -10,
-    marginBottom: 10,
+    backgroundColor: "#F8FBF9",
+    paddingVertical: 14,
+    borderRadius: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
-  otherInfoText: {
+  actionButtonText: {
     color: "#2D6A4F",
-    fontSize: 14,
-    fontWeight: "600",
-    marginLeft: 6,
-    textDecorationLine: "underline",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  analyzerButton: {
+    backgroundColor: "#2D6A4F",
+    borderColor: "#2D6A4F",
+    elevation: 4,
+    shadowColor: "#2D6A4F",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  analyzerButtonText: {
+    color: "#FFFFFF",
   },
   modalScroll: {
     maxHeight: 400,

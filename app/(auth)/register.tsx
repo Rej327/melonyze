@@ -14,7 +14,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 export default function RegisterScreen() {
   const [firstName, setFirstName] = useState("");
@@ -35,6 +38,7 @@ export default function RegisterScreen() {
     onConfirm: undefined as any,
   });
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const handleRegister = async () => {
     // Comprehensive validation
@@ -212,7 +216,12 @@ export default function RegisterScreen() {
           }
         />
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 40 },
+          ]}
+        >
           <View style={styles.header}>
             <TouchableOpacity
               onPress={() => router.back()}
