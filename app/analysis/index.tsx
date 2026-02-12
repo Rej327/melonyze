@@ -806,7 +806,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
-    height: 56,
   },
   scanningContainer: {
     backgroundColor: "#2D6A4F",
@@ -825,7 +824,7 @@ const styles = StyleSheet.create({
   cancelButton: {
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 6,
   },
   cancelButtonText: {
     color: "#D90429",
