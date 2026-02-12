@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Melonize",
+    "name": "Melonyze",
     "slug": "watermelon-harvest-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "melonize",
+    "scheme": "melonyze",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
@@ -22,7 +22,7 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
-      "package": "com.resujeff27.melonize"
+      "package": "com.resujeff27.melonyze"
     },
     "web": {
       "output": "static",
